@@ -24,13 +24,15 @@ CACHE_DIR: Path = APP_DIR / "cache"
 VNDB_CACHE_DIR: Path = CACHE_DIR / "vndb"
 COVER_CACHE_DIR: Path = CACHE_DIR / "covers"
 LOCAL_COVER_DIR: Path = COVER_CACHE_DIR / "local"
+THUMB_CACHE_DIR: Path = CACHE_DIR / "thumbs"
 LOG_FILE: Path = APP_DIR / "vnrpc.log"
 
 ASSETS_DIR: Path = _assets_dir()
 APP_ICON_PNG: Path = ASSETS_DIR / "app_icon.png"
 APP_ICON_ICO: Path = ASSETS_DIR / "vnrpc.ico"
+SCREENSHOT_SOUND: Path = ASSETS_DIR / "screenshot.mp3"
 
 
 def ensure_dirs() -> None:
-    for d in (APP_DIR, GAMES_DIR, CACHE_DIR, VNDB_CACHE_DIR, COVER_CACHE_DIR, LOCAL_COVER_DIR):
+    for d in (APP_DIR, GAMES_DIR, CACHE_DIR, VNDB_CACHE_DIR, COVER_CACHE_DIR, LOCAL_COVER_DIR, THUMB_CACHE_DIR):
         d.mkdir(parents=True, exist_ok=True)
