@@ -2,7 +2,8 @@ from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 datas = []
 datas += collect_data_files("customtkinter")
-datas += [("assets/vnrpc.ico", "assets"), ("assets/app_icon.png", "assets")]
+datas += [("assets/vnrpc.ico", "assets"), ("assets/app_icon.png", "assets"),
+          ("assets/screenshot.mp3", "assets")]
 
 hiddenimports = []
 hiddenimports += collect_submodules("pypresence")
