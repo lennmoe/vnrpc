@@ -1,24 +1,28 @@
 from __future__ import annotations
 
-import os
-from tkinter import filedialog, messagebox
-
 import customtkinter as ctk
 
+from .. import stats
+from ..config import STATUSES
 from ..core import VNRPCEngine, format_playtime
 from ..covers import cached_cover_for_entry
 from ..engines import is_blacklisted
 from . import theme as t
+from .game_dialog import GameDialog, display_name, launch_game, locate_game, remove_game
 from .images import load_image
+from .screenshots_dialog import ScreenshotsDialog
+from .share_dialog import ShareCardDialog
 
 THUMB = (60, 84)
+_SORTS = ("Most read", "Recent", "A–Z")
+_ALL = "All statuses"
 
 
 class LibraryDialog(ctk.CTkToplevel):
     def __init__(self, master, engine: VNRPCEngine) -> None:
         super().__init__(master)
         self.engine = engine
-        t.setup_window(self, title="Library", geometry="660x600", minsize=(540, 420), modal_for=master)
+        t.setup_window(self, title="Library", geometry="700x640", minsize=(580, 460), modal_for=master)
         self.bind("<Escape>", lambda _e: self.destroy())
 
         head = ctk.CTkFrame(self, fg_color="transparent")
@@ -26,7 +30,26 @@ class LibraryDialog(ctk.CTkToplevel):
         ctk.CTkLabel(head, text="Library", font=t.font(20, "bold"), text_color=t.TEXT).pack(side="left")
         self.search = t.entry(head, placeholder_text="Filter…", width=200)
         self.search.pack(side="right")
+        t.secondary_button(head, "Screenshots", lambda: ScreenshotsDialog(self, self.engine), width=110).pack(
+            side="right", padx=8)
+        t.secondary_button(head, "Share stats", lambda: ShareCardDialog(self, self.engine), width=110).pack(
+            side="right")
         self.search.bind("<KeyRelease>", lambda _e: self._reload())
+
+        tools = ctk.CTkFrame(self, fg_color="transparent")
+        tools.pack(fill="x", padx=20, pady=(0, 8))
+        self.sort = t.segmented(tools, list(_SORTS), command=lambda _v: self._reload())
+        self.sort.set(_SORTS[0])
+        self.sort.pack(side="left")
+        self.status_filter = ctk.CTkOptionMenu(
+            tools, values=[_ALL] + [s.capitalize() for s in STATUSES], command=lambda _v: self._reload(),
+            width=140, height=30, corner_radius=8, fg_color=t.SURFACE_ALT, button_color=t.SURFACE_HOVER,
+            button_hover_color=t.BORDER, text_color=t.TEXT, dropdown_fg_color=t.SURFACE,
+            dropdown_hover_color=t.SURFACE_HOVER, dropdown_text_color=t.TEXT, font=t.font(12),
+        )
+        self.status_filter.set(_ALL)
+        self.status_filter.pack(side="right")
+
         self.summary = t.muted(self, "")
         self.summary.pack(fill="x", padx=20, pady=(0, 8))
 
@@ -36,30 +59,42 @@ class LibraryDialog(ctk.CTkToplevel):
         self._reload()
 
     def _reload(self) -> None:
+        if not self.winfo_exists():
+            return
         for w in self.list_box.winfo_children():
             w.destroy()
 
         blacklist = self.engine.blacklist
         games = {
             key: entry for key, entry in self.engine.config.all_games().items()
-            if not is_blacklisted(entry.get("path") or key, blacklist)
+            if not is_blacklisted(entry.get("path") or key.split("@", 1)[0], blacklist)
         }
         total = sum(int(e.get("playtime_seconds", 0)) for e in games.values())
+        week = sum(stats.this_week_seconds(e.get("daily")) for e in games.values())
         count = len(games)
         self.summary.configure(
             text=f"{count} game{'s' if count != 1 else ''}  ·  {format_playtime(total)} read in total"
+                 f"  ·  {format_playtime(week)} this week"
             if count else ""
         )
 
         needle = self.search.get().strip().lower()
+        wanted_status = self.status_filter.get().lower()
         entries = [
             (key, entry) for key, entry in games.items()
-            if not needle or needle in (entry.get("title") or key).lower() or needle in key
+            if (not needle or needle in display_name(key, entry).lower() or needle in key)
+            and (wanted_status == _ALL.lower() or entry.get("status") == wanted_status)
         ]
-        entries.sort(key=lambda kv: int(kv[1].get("playtime_seconds", 0)), reverse=True)
+        sort = self.sort.get()
+        if sort == "Recent":
+            entries.sort(key=lambda kv: int(kv[1].get("last_played", 0)), reverse=True)
+        elif sort == "A–Z":
+            entries.sort(key=lambda kv: display_name(*kv).lower())
+        else:
+            entries.sort(key=lambda kv: int(kv[1].get("playtime_seconds", 0)), reverse=True)
 
         if not entries:
-            msg = ("No match." if needle else
+            msg = ("No match." if needle or wanted_status != _ALL.lower() else
                    "Nothing here yet — start a visual novel with Visual Novel RPC running.")
             t.muted(self.list_box, msg, anchor="center", justify="center").pack(pady=40)
             return
@@ -76,63 +111,55 @@ class LibraryDialog(ctk.CTkToplevel):
         thumb = ctk.CTkLabel(row, text="", image=load_image(cached_cover_for_entry(entry), THUMB, radius=6))
         thumb.grid(row=0, column=0, rowspan=3, padx=12, pady=12)
 
-        name = entry.get("title") or key
+        name = display_name(key, entry)
         seconds = int(entry.get("playtime_seconds", 0))
-        ctk.CTkLabel(row, text=t.ellipsize(name, 60), anchor="w", font=t.font(14, "bold"),
-                     text_color=t.TEXT).grid(row=0, column=1, sticky="sw", pady=(14, 0))
-        sub = f"{format_playtime(seconds)} read"
+        name_lbl = ctk.CTkLabel(row, text=t.ellipsize(name, 50), anchor="w", font=t.font(14, "bold"),
+                                text_color=t.TEXT)
+        name_lbl.grid(row=0, column=1, sticky="sw", pady=(14, 0))
+
+        line = ctk.CTkFrame(row, fg_color="transparent")
+        line.grid(row=1, column=1, sticky="w")
+        status = entry.get("status")
+        if status in STATUSES:
+            t.chip(line, f" {status.capitalize()} ", fg_color=t.SURFACE_ALT,
+                   text_color=t.STATUS_COLORS[status]).pack(side="left", padx=(0, 8))
+        bits = [f"{format_playtime(seconds)} read"]
+        last = stats.last_played_text(entry.get("last_played"))
+        if last:
+            bits.append(last)
         if entry.get("vndb_id"):
-            sub += f"   ·   {entry['vndb_id']}"
-        t.muted(row, sub).grid(row=1, column=1, sticky="w")
+            bits.append(entry["vndb_id"])
+        sub = t.muted(line, "   ·   ".join(bits))
+        sub.pack(side="left")
 
         bar = ctk.CTkProgressBar(row, height=4, corner_radius=2, progress_color=t.ACCENT,
                                  fg_color=t.SURFACE_ALT)
         bar.set(seconds / top)
         bar.grid(row=2, column=1, sticky="new", pady=(6, 14))
 
+        # The whole card (but not its buttons) opens the game's details.
+        for widget in (row, thumb, name_lbl, line, sub, bar):
+            widget.bind("<Button-1>", lambda _e, k=key: self._open(k))
+            widget.configure(cursor="hand2")
+
         btns = ctk.CTkFrame(row, fg_color="transparent")
         btns.grid(row=0, column=2, rowspan=3, padx=12)
         exe_path = entry.get("path", "")
         if exe_path:
-            t.primary_button(btns, "▶  Play", lambda k=key, p=exe_path: self._launch(k, p), width=86).pack(
-                side="left"
-            )
+            t.primary_button(
+                btns, "▶  Play", lambda k=key: launch_game(self, self.engine, k, self._reload),
+                width=86,
+            ).pack(side="left")
         else:
-            t.secondary_button(btns, "Locate…", lambda k=key: self._locate(k), width=86).pack(side="left")
+            t.secondary_button(btns, "Locate…", lambda k=key: locate_game(self, self.engine, k, self._reload),
+                               width=86).pack(side="left")
         t.danger_button(btns, "Remove", lambda k=key, n=name: self._remove(k, n), width=80).pack(
             side="left", padx=(8, 0)
         )
 
-    def _launch(self, key: str, exe_path: str) -> None:
-        if not os.path.isfile(exe_path):
-            if messagebox.askyesno(
-                "Play", "This game's executable can't be found anymore\n"
-                "(it may have moved or been uninstalled).\n\nLocate it?", parent=self,
-            ):
-                self._locate(key)
-            return
-        try:
-            os.startfile(exe_path, cwd=os.path.dirname(exe_path))
-        except OSError as exc:
-            messagebox.showerror("Play", f"Couldn't launch it: {exc}", parent=self)
-
-    def _locate(self, key: str) -> None:
-        path = filedialog.askopenfilename(
-            parent=self, title="Locate the game's executable",
-            filetypes=[("Programs", "*.exe"), ("All files", "*.*")],
-        )
-        if not path:
-            return
-        self.engine.set_game_path(key, os.path.normpath(path))
-        self._reload()
+    def _open(self, key: str) -> None:
+        GameDialog(self, self.engine, key, on_change=self._reload)
 
     def _remove(self, key: str, name: str) -> None:
-        if not messagebox.askyesno(
-            "Remove", f'Remove "{name}" from the library?\n\n'
-            "Its saved playtime, cover and privacy settings are forgotten.\n"
-            "Nothing is uninstalled.",
-            parent=self,
-        ):
-            return
-        self.engine.clear_override(key)
-        self._reload()
+        if remove_game(self, self.engine, key, name):
+            self._reload()
