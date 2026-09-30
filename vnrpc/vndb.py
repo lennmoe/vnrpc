@@ -15,6 +15,9 @@ API_BASE = "https://api.vndb.org/kana"
 USER_AGENT = "VisualNovelRPC/1.0 (+https://github.com/; local desktop app)"
 _MIN_INTERVAL = 1.1
 
+# Pre-defined VNDB list labels; the website keeps these four mutually exclusive.
+LIST_LABELS = {"playing": 1, "finished": 2, "stalled": 3, "dropped": 4}
+
 _QUERY_FIELDS = (
     "id,title,alttitle,released,rating,"
     "image.url,image.dims,image.sexual,image.violence"
@@ -83,6 +86,7 @@ class VNDBClient:
         self._session.headers.update({"User-Agent": USER_AGENT})
         self._lock = threading.Lock()
         self._last_call = 0.0
+        self._auth_cache: dict[str, dict[str, Any]] = {}
 
     def _throttle(self) -> None:
         with self._lock:
@@ -92,11 +96,17 @@ class VNDBClient:
             self._last_call = time.monotonic()
 
     def _post(self, endpoint: str, body: dict[str, Any]) -> dict[str, Any]:
+        return self._request("POST", endpoint, body)
+
+    def _request(
+        self, method: str, endpoint: str, body: dict[str, Any] | None = None, token: str = ""
+    ) -> dict[str, Any]:
         url = f"{API_BASE}{endpoint}"
+        headers = {"Authorization": f"Token {token}"} if token else {}
         for attempt in range(4):
             self._throttle()
             try:
-                resp = self._session.post(url, json=body, timeout=15)
+                resp = self._session.request(method, url, json=body, headers=headers, timeout=15)
             except requests.RequestException as exc:
                 if attempt == 3:
                     raise VNDBError(f"network error: {exc}") from exc
@@ -105,10 +115,35 @@ class VNDBClient:
             if resp.status_code == 429:
                 time.sleep(2.0 * (attempt + 1))
                 continue
+            if resp.status_code == 401:
+                raise VNDBError("the VNDB token is invalid or was revoked")
             if resp.status_code >= 400:
                 raise VNDBError(f"HTTP {resp.status_code}: {resp.text[:200]}")
-            return resp.json()
+            return resp.json() if resp.content else {}
         raise VNDBError("rate limited, giving up")
+
+    def list_user(self, token: str) -> dict[str, Any]:
+        """``{"id", "username", "permissions"}`` for a token that may edit its owner's list."""
+        if token not in self._auth_cache:
+            info = self._request("GET", "/authinfo", token=token)
+            if "listwrite" not in (info.get("permissions") or []):
+                raise VNDBError("this token can't edit your list (it needs list write access)")
+            self._auth_cache[token] = info
+        return self._auth_cache[token]
+
+    def get_list_entry(self, token: str, vn_id: str) -> dict[str, Any] | None:
+        """The user's list entry for ``vn_id`` (labels, started, finished, vote), if any."""
+        body = {
+            "user": self.list_user(token)["id"],
+            "filters": ["id", "=", vn_id],
+            "fields": "labels.id,started,finished,vote",
+        }
+        results = self._request("POST", "/ulist", body, token=token).get("results") or []
+        return results[0] if results else None
+
+    def update_list_entry(self, token: str, vn_id: str, changes: dict[str, Any]) -> None:
+        """PATCH the user's list entry (VNDB adds the VN to the list if it isn't there yet)."""
+        self._request("PATCH", f"/ulist/{vn_id}", changes, token=token)
 
     def search_vn(self, query: str, limit: int = 10, use_cache: bool = True) -> list[VNResult]:
         query = (query or "").strip()
@@ -199,6 +234,34 @@ class VNDBClient:
             return str(dest)
         except (requests.RequestException, OSError):
             return None
+
+
+def push_list_status(
+    client: VNDBClient, token: str, vn_id: str, status: str, *, keep_existing: bool = False
+) -> str:
+    """Put ``vn_id`` on the user's VNDB list as ``status`` (a :data:`LIST_LABELS` key,
+    or ``""`` to take those labels off) and return the status it ends up with.
+    ``keep_existing``: if it's already on the list as Playing/Finished/Stalled/Dropped,
+    leave it alone and return that instead."""
+    entry = client.get_list_entry(token, vn_id) or {}
+    label_ids = {lbl.get("id") for lbl in entry.get("labels") or []}
+    current = next((name for name, lid in LIST_LABELS.items() if lid in label_ids), "")
+    if current == status or (current and keep_existing):
+        return current
+    if not status:
+        client.update_list_entry(token, vn_id, {"labels_unset": list(LIST_LABELS.values())})
+        return ""
+    changes: dict[str, Any] = {
+        "labels_set": [LIST_LABELS[status]],
+        "labels_unset": [lid for name, lid in LIST_LABELS.items() if name != status],
+    }
+    today = time.strftime("%Y-%m-%d")
+    if not entry.get("started"):
+        changes["started"] = today
+    if status == "finished" and not entry.get("finished"):
+        changes["finished"] = today
+    client.update_list_entry(token, vn_id, changes)
+    return status
 
 
 def _release_covers_from_api(obj: dict[str, Any]) -> list[ReleaseCover]:
