@@ -59,8 +59,6 @@ class Engine:
         pts = 0
         if any(re.search(p, exe) for p in self.exe_patterns):
             pts += 40
-        if any(re.search(p, cls) for p in self.class_patterns):
-            pts += 25
         if self.dir_files and win.exe_path:
             folder = os.path.dirname(win.exe_path)
             try:
@@ -69,6 +67,10 @@ class Engine:
                 listing = set()
             if any(any(f in n for n in listing) for f in self.dir_files):
                 pts += 20
+        # A window class alone proves nothing: Chrome_WidgetWin is every Electron app
+        # (Medal, Riot Client, NZXT CAM…) and SDL_app is osu! as much as Ren'Py.
+        if pts and any(re.search(p, cls) for p in self.class_patterns):
+            pts += 25
         return pts
 
     def clean_title(self, title: str) -> str:
