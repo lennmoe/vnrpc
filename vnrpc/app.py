@@ -10,19 +10,25 @@ from tkinter import messagebox
 import customtkinter as ctk
 from PIL import Image
 
+from . import screenshots, single_instance
 from .config import Config
 from .core import Snapshot, VNRPCEngine
 from .engines import is_blacklisted
-from .paths import ensure_dirs
+from .hotkey import HotkeyListener
+from .paths import SCREENSHOT_SOUND, ensure_dirs
 from .presence import Activity
+from .sound import Sound
 from .ui import theme as t
 from .ui.cover_dialog import CoverDialog
 from .ui.images import app_icon_image, fetch_full_image_async, make_ctk_image, tray_image
 from .ui.library_dialog import LibraryDialog
 from .ui.settings_dialog import SettingsDialog
+from .ui.toast import show_toast
+from .winapi import CaptureError, client_rect_on_screen
 
 COVER_SIZE = (150, 212)
 THUMB_SIZE = (76, 76)
+TOAST_THUMB = (96, 54)
 _NO_WINDOWS = "(no windows found)"
 _PICK_WINDOW = "Pick the game window…"
 
@@ -33,7 +39,8 @@ class App(ctk.CTk):
         ensure_dirs()
         self.config_data = Config.load()
 
-        ctk.set_appearance_mode("dark")
+        t.set_custom_theme(self.config_data.get("custom_theme"))
+        t.apply_theme(self.config_data.get("theme", t.SYSTEM))
         ctk.set_default_color_theme("dark-blue")
         self.title("Visual Novel RPC")
         self.geometry("700x700")
@@ -47,6 +54,12 @@ class App(ctk.CTk):
             on_snapshot=lambda s: self._events.put(("snap", s)),
             on_status=lambda kind, ok, msg: self._events.put(("status", kind, ok, msg)),
         )
+        self._hotkey = HotkeyListener(
+            on_press=self.take_screenshot,
+            on_error=lambda msg: self._events.put(("status", "screenshot", False, msg)),
+        )
+        self._hotkey.set_hotkey(self.config_data.get("screenshot_hotkey"))
+        self._shutter = Sound(SCREENSHOT_SOUND, "vnrpc_shutter")
 
         self._paused = False
         self._last_snapshot = Snapshot()
@@ -61,8 +74,10 @@ class App(ctk.CTk):
         self._render_snapshot(Snapshot())
         self._poll_events()
         self._tick_elapsed()
+        self._follow_windows_theme()
 
         self.engine.start()
+        self._hotkey.start()
         self.protocol("WM_DELETE_WINDOW", self._hide_to_tray)
         self._tray = None
         self._tray_failed = False
@@ -107,7 +122,7 @@ class App(ctk.CTk):
         ctk.CTkLabel(inner, text="Presence paused — nothing is being shared on Discord.",
                      text_color=t.TEXT, font=t.font(12)).pack(side="left")
         ctk.CTkButton(inner, text="Resume", width=80, height=26, corner_radius=7, fg_color=t.YELLOW,
-                      hover_color="#D69E2B", text_color="#1E1F22", font=t.font(12, "bold"),
+                      hover_color=t.YELLOW_HOVER, text_color=t.ON_YELLOW, font=t.font(12, "bold"),
                       command=self._toggle_pause).pack(side="right")
 
     def _build_card(self) -> None:
@@ -133,7 +148,7 @@ class App(ctk.CTk):
 
         self.badges = ctk.CTkFrame(info, fg_color="transparent", height=1)
         self.badges.pack(fill="x")
-        self.section_badge = t.chip(self.badges, fg_color=t.ACCENT, text_color="white")
+        self.section_badge = t.chip(self.badges, fg_color=t.ACCENT, text_color=t.ON_ACCENT)
         self.playtime_badge = t.chip(self.badges, fg_color=t.SURFACE_ALT, text_color=t.TEXT)
 
         self.actions = ctk.CTkFrame(info, fg_color="transparent")
@@ -225,12 +240,17 @@ class App(ctk.CTk):
                     self._render_snapshot(evt[1])
                 elif evt[0] == "status":
                     self._render_status(evt[1], evt[2], evt[3])
+                elif evt[0] == "shot":
+                    self._screenshot_done(*evt[1:])
+                elif evt[0] == "show":
+                    self._show_from_tray()
         except queue.Empty:
             pass
         self.after(150, self._poll_events)
 
     def _render_snapshot(self, snap: Snapshot) -> None:
         self._last_snapshot = snap
+        self._hotkey.set_target(snap.pid if snap.detected else 0)
         self._activity = self.engine.activity_for(snap)
         self.section_badge.pack_forget()
         self.playtime_badge.pack_forget()
@@ -316,6 +336,12 @@ class App(ctk.CTk):
             self.preview_button.configure(text=f"  {act.buttons[0]['label']}  ")
             self.preview_button.pack(anchor="w", pady=(8, 0))
         self._refresh_preview_thumb()
+
+    def _follow_windows_theme(self) -> None:
+        """With the System theme, switch between Dark and Light when Windows does."""
+        if t.current_theme == t.SYSTEM and t.windows_mode() != t.resolved_theme:
+            self.rebuild_ui()
+        self.after(3000, self._follow_windows_theme)
 
     def _tick_elapsed(self) -> None:
         self._update_elapsed()
@@ -434,6 +460,43 @@ class App(ctk.CTk):
             return
         self.engine.add_to_blacklist(exe)
 
+    def take_screenshot(self) -> None:
+        """Capture the game's window. Safe from any thread: the work happens on its own."""
+        threading.Thread(target=self._capture, name="screenshot", daemon=True).start()
+
+    def _capture(self) -> None:
+        snap = self.engine.snapshot
+        try:
+            path = self.engine.take_screenshot(on_captured=lambda: self.after(0, self.play_shutter))
+        except (CaptureError, OSError) as exc:
+            self._events.put(("shot", snap, None, None, str(exc)))
+            return
+        # Also warms the thumbnail cache for the game's page and the gallery.
+        thumb = screenshots.thumbnail(path, (TOAST_THUMB[0] * 2, TOAST_THUMB[1] * 2))
+        self._events.put(("shot", snap, path, thumb, ""))
+
+    def play_shutter(self, volume: int | None = None) -> None:
+        """The capture sound, at the volume from Settings unless ``volume`` is given."""
+        if volume is None:
+            volume = self.config_data.get("screenshot_volume", 30)
+        self._shutter.play(int(volume))
+
+    def _screenshot_done(self, snap: Snapshot, path, thumb, error: str) -> None:
+        area = client_rect_on_screen(snap.hwnd) if snap.hwnd else None
+        if path is None:
+            show_toast(self, "Screenshot failed", error, ok=False, area=area)
+            self.status_line.configure(text=t.ellipsize(f"Screenshot failed: {error}", 70), text_color=t.SUBTLE)
+            return
+        image = ctk.CTkImage(light_image=thumb, dark_image=thumb, size=TOAST_THUMB) if thumb else None
+        where = "  ·  ".join(b for b in (snap.game_name, snap.section_label) if b)
+        show_toast(self, "Screenshot saved", where, image=image, area=area)
+        self.status_line.configure(text=t.ellipsize(f"Screenshot saved: {path.name}", 70), text_color=t.MUTED)
+        screenshots.notify(snap.key)
+
+    def apply_screenshot_settings(self) -> None:
+        """Settings were saved: pick up a new capture key."""
+        self._hotkey.set_hotkey(self.config_data.get("screenshot_hotkey"))
+
     def _open_vndb(self) -> None:
         vn = self._last_snapshot.vn
         if vn:
@@ -456,10 +519,10 @@ class App(ctk.CTk):
         snap = self._last_snapshot
         if not snap.detected:
             return
-        self._open_dialog("cover", lambda: CoverDialog(self, self.engine, snap.exe, snap.game_name))
+        self._open_dialog("cover", lambda: CoverDialog(self, self.engine, snap.key, snap.game_name))
 
-    def _open_settings(self) -> None:
-        self._open_dialog("settings", lambda: SettingsDialog(self, self.engine))
+    def _open_settings(self, tab: str | None = None) -> None:
+        self._open_dialog("settings", lambda: SettingsDialog(self, self.engine, tab))
 
     def _open_library(self) -> None:
         self._open_dialog("library", lambda: LibraryDialog(self, self.engine))
@@ -467,20 +530,41 @@ class App(ctk.CTk):
     def _toggle_pause(self) -> None:
         self._paused = not self._paused
         self.engine.set_paused(self._paused)
-        if self._paused:
-            self.pause_btn.configure(text="Resume", fg_color=t.ACCENT, hover_color=t.ACCENT_HOVER,
-                                     text_color="white", border_width=0)
-            self.paused_banner.grid(row=1, column=0, sticky="ew", padx=20, pady=(0, 12))
-        else:
-            self.pause_btn.configure(text="Pause", fg_color=t.SURFACE_ALT, hover_color=t.SURFACE_HOVER,
-                                     text_color=t.TEXT, border_width=1)
-            self.paused_banner.grid_forget()
+        self._sync_pause_widgets()
         self._render_preview()
         if self._tray is not None:
             try:
                 self._tray.update_menu()
             except Exception:
                 pass
+
+    def _sync_pause_widgets(self) -> None:
+        if self._paused:
+            self.pause_btn.configure(text="Resume", fg_color=t.ACCENT, hover_color=t.ACCENT_HOVER,
+                                     text_color=t.ON_ACCENT, border_width=0)
+            self.paused_banner.grid(row=1, column=0, sticky="ew", padx=20, pady=(0, 12))
+        else:
+            self.pause_btn.configure(text="Pause", fg_color=t.SURFACE_ALT, hover_color=t.SURFACE_HOVER,
+                                     text_color=t.TEXT, border_width=1)
+            self.paused_banner.grid_forget()
+
+    def rebuild_ui(self, reopen_settings: str | None = None) -> None:
+        """Re-create every widget in the theme now in the config (Settings → Theme).
+        Open dialogs are closed (Settings reopens on tab ``reopen_settings`` if given);
+        what's being read and the pause state carry over."""
+        t.set_custom_theme(self.config_data.get("custom_theme"))
+        t.apply_theme(self.config_data.get("theme", t.SYSTEM))
+        self._dialogs.clear()
+        for child in self.winfo_children():
+            child.destroy()
+        self.configure(fg_color=t.BG)
+        self._cover_key = ("unset",)
+        self._asset_thumb = app_icon_image(THUMB_SIZE[0], radius=8)
+        self._build()
+        self._sync_pause_widgets()
+        self._render_snapshot(self._last_snapshot)
+        if reopen_settings:
+            self._open_settings(reopen_settings)
 
     def _start_tray(self) -> None:
         try:
@@ -492,6 +576,8 @@ class App(ctk.CTk):
                     lambda _i: "Resume presence" if self._paused else "Pause presence",
                     lambda _i, _it: self.after(0, self._toggle_pause),
                 ),
+                pystray.MenuItem("Take screenshot", lambda _i, _it: self.take_screenshot(),
+                                 enabled=lambda _i: self._last_snapshot.detected),
                 pystray.MenuItem("Quit", lambda _i, _it: self.after(0, self._quit)),
             )
             self._tray = pystray.Icon("vnrpc", tray_image(64), "Visual Novel RPC", menu)
@@ -515,6 +601,8 @@ class App(ctk.CTk):
                 self._tray.stop()
         except Exception:
             pass
+        self._hotkey.stop()
+        self._shutter.close()
         self.engine.stop()
         self.destroy()
         sys.exit(0)
@@ -522,7 +610,6 @@ class App(ctk.CTk):
 
 class _Pill(ctk.CTkFrame):
     """Rounded status chip: a colored dot + a label."""
-    _COLORS = {"ok": t.GREEN, "bad": t.RED, "idle": t.SUBTLE}
 
     def __init__(self, parent, text: str) -> None:
         super().__init__(parent, fg_color=t.SURFACE, border_width=1, border_color=t.BORDER,
@@ -533,12 +620,16 @@ class _Pill(ctk.CTkFrame):
         self._text.pack(side="left", padx=(0, 12), pady=3)
 
     def set_state(self, state: str, text: str) -> None:
-        self._dot.configure(text_color=self._COLORS.get(state, t.SUBTLE))
+        self._dot.configure(text_color={"ok": t.GREEN, "bad": t.RED}.get(state, t.SUBTLE))
         self._text.configure(text=text, text_color=t.TEXT if state == "ok" else t.MUTED)
 
 
 def main() -> None:
+    instance = single_instance.acquire()
+    if instance is None:
+        return  # already running: that copy comes to the front instead
     app = App()
+    instance.on_show_request(lambda: app._events.put(("show",)))
     app.mainloop()
 
 
