@@ -10,6 +10,7 @@ from tkinter import filedialog, messagebox
 from typing import Callable
 
 import customtkinter as ctk
+from PIL import Image, ImageColor, ImageDraw, ImageTk
 
 from .. import launcher, screenshots, stats
 from ..config import STATUSES
@@ -459,6 +460,7 @@ class ReadingChart(ctk.CTkFrame):
         self._points: list[tuple[str, str, int]] = []
         self._slots: list[tuple[float, float]] = []
         self._hover = -1
+        self._bars: ImageTk.PhotoImage | None = None
         self.canvas.bind("<Configure>", lambda _e: self._redraw())
         self.canvas.bind("<Motion>", self._on_motion)
         self.canvas.bind("<Leave>", lambda _e: self._set_hover(-1))
@@ -483,7 +485,7 @@ class ReadingChart(ctk.CTkFrame):
 
         for i in range(int(ceiling // step) + 1):
             y = base - (base - top) * (i * step) / ceiling
-            c.create_line(left, y, right, y, fill=grid, width=1)
+            c.create_line(left, y, right, y, fill=grid, width=1, tags="grid")
             c.create_text(left - 6, y, text=_duration(i * step), anchor="e", fill=text, font=_CHART_FONT)
 
         n = len(self._points)
@@ -491,6 +493,7 @@ class ReadingChart(ctk.CTkFrame):
         bar = max(2.0, min(self.MAX_BAR, slot - 2))
         self._slots = []
         peak_index = max(range(n), key=lambda i: self._points[i][2]) if peak else -1
+        columns = []
         for i, (axis, _tip, secs) in enumerate(self._points):
             x0 = left + i * slot
             self._slots.append((x0, x0 + slot))
@@ -505,11 +508,14 @@ class ReadingChart(ctk.CTkFrame):
             if secs <= 0:
                 continue
             y = base - (base - top) * secs / ceiling
-            _column(c, cx - bar / 2, y, cx + bar / 2, base, self.RADIUS,
-                    t.ACCENT_HOVER if i == self._hover else t.ACCENT)
+            columns.append((cx - bar / 2, y, cx + bar / 2, base,
+                            t.resolve(t.ACCENT_HOVER if i == self._hover else t.ACCENT)))
             if i == peak_index:
                 c.create_text(cx, y - 7, text=_duration(secs), fill=t.resolve(t.TEXT), font=_CHART_FONT)
 
+        if columns:
+            self._bars = ImageTk.PhotoImage(_columns_image(w, h, columns, self.RADIUS, t.resolve(t.ACCENT)))
+            c.tag_raise(c.create_image(0, 0, image=self._bars, anchor="nw"), "grid")  # over the grid, under text
         if not peak:
             c.create_text((left + right) / 2, (top + base) / 2, text="Nothing read in this period",
                           fill=text, font=_CHART_FONT)
@@ -563,13 +569,22 @@ def _duration(seconds: int, *, exact: bool = False) -> str:
     return f"{hours}h" if hours else f"{mins}m"
 
 
-def _column(c: tk.Canvas, x0: float, y0: float, x1: float, y1: float, r: int, color: str) -> None:
-    """A column with a rounded top (the data end) and a square foot on the baseline."""
-    r = min(r, (x1 - x0) / 2, y1 - y0)
-    if r < 1:
-        c.create_rectangle(x0, y0, x1, y1, fill=color, outline="")
-        return
-    c.create_rectangle(x0, y0 + r, x1, y1, fill=color, outline="")
-    c.create_rectangle(x0 + r, y0, x1 - r, y0 + r, fill=color, outline="")
-    c.create_oval(x0, y0, x0 + 2 * r, y0 + 2 * r, fill=color, outline="")
-    c.create_oval(x1 - 2 * r, y0, x1, y0 + 2 * r, fill=color, outline="")
+_SUPERSAMPLE = 3
+
+
+def _columns_image(w: int, h: int, columns, radius: int, base_color: str) -> Image.Image:
+    """The chart's columns, smooth-edged: rounded top (the data end), square foot on
+    the baseline. Drawn at ``_SUPERSAMPLE``x and shrunk, since Tk canvas shapes
+    aren't anti-aliased. ``columns``: ``(x0, y0, x1, y1, color)`` in canvas pixels."""
+    s = _SUPERSAMPLE
+    # Transparent pixels carry the bar color, so shrinking doesn't leave dark fringes.
+    img = Image.new("RGBA", (w * s, h * s), ImageColor.getrgb(base_color) + (0,))
+    draw = ImageDraw.Draw(img)
+    for x0, y0, x1, y1, color in columns:
+        box = [round(x0 * s), round(y0 * s), round(x1 * s) - 1, round(y1 * s) - 1]
+        r = min(radius, (x1 - x0) / 2, y1 - y0)
+        if r >= 1:
+            draw.rounded_rectangle(box, radius=round(r * s), fill=color, corners=(True, True, False, False))
+        else:
+            draw.rectangle(box, fill=color)
+    return img.resize((w, h), Image.LANCZOS)
