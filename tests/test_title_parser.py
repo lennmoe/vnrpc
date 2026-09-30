@@ -19,8 +19,11 @@ CASES = [
     ("Fate/stay night - Fate Route", "Fate/stay night", "route", "Fate Route"),
     ("Clannad - Nagisa編", "Clannad", "route", "Nagisa Arc"),
     ("Some VN - Day 5", "Some VN", "chapter", "Day 5"),
+    ("Sayonara wo Oshiete Day 10, The girl on the rooftop", "Sayonara o Oshiete ~Comment te Dire Adieu~",
+     "chapter", "Day 10 — The girl on the rooftop"),
     ("Some VN - Good Ending", "Some VN", "ending", "Good Ending"),
-    ("Steins;Gate - Chapter 6: Beta", "Steins;Gate", "chapter", "Chapter 6"),
+    ("Steins;Gate - Chapter 6: Beta", "Steins;Gate", "chapter", "Chapter 6 — Beta"),
+    ("hapymaher  - Chapter 1: The Dreaming Realist -", "Hapymaher", "chapter", "Chapter 1 — The Dreaming Realist"),
     ("White Album 2 - Common Route", "White Album 2", "route", "Common Route"),
     ("Amatsutsumi - Kokoro, Chapter 1", "Amatsutsumi", "chapter", "Kokoro — Chapter 1"),
 ]
