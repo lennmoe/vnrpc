@@ -5,15 +5,17 @@ import re
 import threading
 import time
 from dataclasses import dataclass, field, replace
+from pathlib import Path
 from typing import Callable
 
-from . import steam
-from .config import Config, game_key
+from . import screenshots, steam
+from .config import STATUSES, Config
 from .covers import Cover, cover_from_vn, resolve_cover
 from .engines import blacklist_set, clean_title, normalize_exe
 from .presence import Activity, PresenceManager
 from .title_parser import Rule, build_rules, parse, strip_game_name
-from .vndb import ReleaseCover, VNDBClient, VNResult
+from .vndb import ReleaseCover, VNDBClient, VNDBError, VNResult, push_list_status
+from .winapi import CaptureError, capture_window
 from .window_watcher import TargetState, WindowWatcher
 
 _SECTION_TAIL = re.compile(r"\s*[-–—~～:|].*$")
@@ -32,6 +34,7 @@ def format_playtime(seconds: int) -> str:
 class Snapshot:
     """Everything the UI needs to draw the "now playing" card."""
     detected: bool = False
+    key: str = ""
     exe: str = ""
     engine_name: str = ""
     raw_title: str = ""
@@ -47,6 +50,8 @@ class Snapshot:
     playtime_seconds: int = 0
     playtime_text: str = ""
     session_start: int = 0
+    hwnd: int = 0
+    pid: int = 0
 
 
 class VNRPCEngine:
@@ -74,6 +79,7 @@ class VNRPCEngine:
         self._current_key = ""
         self._session_start = 0
         self._auto_match: dict[str, VNResult | None] = {}
+        self._syncing: set[str] = set()
         self._rules: list[Rule] = build_rules(config.get("title_rules"))
         self._paused = False
 
@@ -143,18 +149,18 @@ class VNRPCEngine:
 
     def _handle_target(self, target: TargetState | None) -> None:
         if target is None:
+            # Clear Discord first: saving the playtime below touches the disk and can fail.
+            if self.config["clear_on_close"]:
+                self.presence.set_activity(None)
+            self._current_key = ""
+            self._store(Snapshot(detected=False))
+            self._on_status("game", False, "no visual novel detected")
             with self._playtime_lock:
                 self._flush_playtime_locked()
                 self._playtime_key = ""
-            self._current_key = ""
-            snap = Snapshot(detected=False)
-            self._store(snap)
-            if self.config["clear_on_close"]:
-                self.presence.set_activity(None)
-            self._on_status("game", False, "no visual novel detected")
             return
 
-        key = game_key(target.exe)
+        key = self.config.key_for(target.exe, target.exe_path)
         if key != self._current_key:
             with self._playtime_lock:
                 self._flush_playtime_locked()
@@ -162,11 +168,12 @@ class VNRPCEngine:
                 self._playtime_tick_start = time.time()
             self._current_key = key
             self._session_start = int(time.time())
+            self.config.start_session(key)
 
-        override = self.config.game_override(target.exe)
+        override = self.config.game_override(key)
         if target.exe_path and override.get("path") != target.exe_path:
-            self.config.set_game_override(target.exe, path=target.exe_path)
-            override = self.config.game_override(target.exe)
+            self.config.set_game_override(key, path=target.exe_path)
+            override = self.config.game_override(key)
             self.watcher.set_known_paths(self.config.known_game_paths())
         cleaned = clean_title(target.raw_title, None) if not target.engine_name else clean_title(
             target.raw_title, _engine_by_name(target.engine_name)
@@ -187,16 +194,35 @@ class VNRPCEngine:
             or steam_name
             or _guess_game_name(cleaned)
         )
+        # Remember what was detected so the Library can show a name and cover instead of the exe.
+        learned = {}
+        if game_name and not override.get("title") and override.get("name") != game_name:
+            learned["name"] = game_name
+        if vn and not override.get("vndb_id") and override.get("matched_vndb_id") != vn.id:
+            learned["matched_vndb_id"] = vn.id
+        if "status" not in override:  # "" means the user cleared it: leave it be
+            learned["status"] = "playing"
+        if learned:
+            self.config.set_game_override(key, **learned)
+        vn_id = override.get("vndb_id")
+        if vn_id and override.get("vndb_synced") != vn_id:
+            # First time this VN is read with list sync on: mark it Playing on VNDB,
+            # unless it's already on the list with a status of its own.
+            self._sync_list_status(key, vn_id, override.get("status") or "playing", keep_existing=True)
 
         rules = build_rules((override.get("title_rules") or []) + (self.config.get("title_rules") or []))
         info = parse(cleaned, game_name, rules)
 
         cover = self._resolve_cover(override, vn, game_name)
+        if cover.source != "none" and override.get("cover_nsfw") != cover.nsfw:
+            # Remembered so the stats card never shares a flagged cover by accident.
+            self.config.set_game_override(key, cover_nsfw=cover.nsfw)
         privacy = (override.get("privacy") or "full").lower()
         playtime_seconds = self.config.get_playtime_seconds(key)
 
         snap = Snapshot(
             detected=True,
+            key=key,
             exe=target.exe,
             engine_name=target.engine_name,
             raw_title=target.raw_title,
@@ -211,6 +237,8 @@ class VNRPCEngine:
             playtime_seconds=playtime_seconds,
             playtime_text=format_playtime(playtime_seconds),
             session_start=self._session_start,
+            hwnd=target.hwnd,
+            pid=target.pid,
         )
         snap.presence_text = _preview(game_name, info.section_label)
         self._store(snap)
@@ -263,7 +291,10 @@ class VNRPCEngine:
                 if vn is None:
                     return Cover(source="none")
         if vn is not None:
-            return cover_from_vn(vn, allow_nsfw=allow_nsfw, default_asset_key=asset)
+            cover = cover_from_vn(vn, allow_nsfw=allow_nsfw, default_asset_key=asset)
+            # Cache it on disk so the Library has a thumbnail for auto-matched VNs too.
+            cover.local_path = self.vndb.cover_path(vn.id, vn.image_url)
+            return cover
         return Cover(source="none")
 
     def _resolve_cover_for_vn_id(self, vn_id: str, game_name: str) -> Cover:
@@ -293,10 +324,12 @@ class VNRPCEngine:
         buttons = []
         if self.config["show_vndb_button"] and snap.vn is not None and snap.privacy != "partial":
             buttons.append({"label": "View on VNDB", "url": snap.vn.vndb_url})
-        state = f"Total read: {snap.playtime_text}" if snap.playtime_seconds > 0 else ""
+        show_total = self.config.get("show_total_read", True)
+        state = f"Total read: {snap.playtime_text}" if show_total and snap.playtime_seconds > 0 else ""
+        show_section = self.config.get("show_section", True) and snap.privacy != "partial"
         return Activity(
             name=snap.game_name or snap.raw_title or "Visual Novel",
-            details="" if snap.privacy == "partial" else _reading_line(snap.section_label),
+            details=_reading_line(snap.section_label) if show_section else "",
             state=state,
             large_image=snap.cover.discord_image or self.config["default_asset_key"],
             large_text=snap.cover.label or snap.game_name,
@@ -327,7 +360,10 @@ class VNRPCEngine:
         elapsed = now - self._playtime_tick_start
         self._playtime_tick_start = now
         if elapsed > 0:
-            self.config.add_playtime_seconds(self._playtime_key, elapsed)
+            try:
+                self.config.add_playtime_seconds(self._playtime_key, elapsed)
+            except OSError as exc:  # e.g. the game's file is locked by an antivirus or sync tool
+                self._on_status("game", False, f"couldn't save playtime: {exc}")
 
     def _playtime_loop(self) -> None:
         """Periodically save elapsed time and refresh the "total hours read" figure
@@ -340,7 +376,7 @@ class VNRPCEngine:
             if not snap.detected:
                 continue
             self._flush_playtime()
-            total = self.config.get_playtime_seconds(game_key(snap.exe))
+            total = self.config.get_playtime_seconds(snap.key)
             new_snap = replace(snap, playtime_seconds=total, playtime_text=format_playtime(total))
             with self._lock:
                 if self._snapshot is not snap:
@@ -349,39 +385,39 @@ class VNRPCEngine:
             self._on_snapshot(new_snap)
             self._push_presence(new_snap)
 
-    def apply_vn_choice(self, exe: str, vn: VNResult, *, as_cover: bool = True) -> None:
+    def apply_vn_choice(self, key: str, vn: VNResult, *, as_cover: bool = True) -> None:
         """User picked a VN in the cover dialog's VNDB tab."""
         fields = {"vndb_id": vn.id, "title": vn.title}
         if as_cover:
             fields.update(cover_source="vndb", cover_value=vn.id)
-        self.config.set_game_override(exe, **fields)
+        self.config.set_game_override(key, **fields)
         self.reload_config()
 
-    def apply_release_cover(self, exe: str, vn: VNResult, image_url: str) -> None:
+    def apply_release_cover(self, key: str, vn: VNResult, image_url: str) -> None:
         """User picked a specific release's box art in the cover dialog."""
         self.config.set_game_override(
-            exe, vndb_id=vn.id, title=vn.title, cover_source="url", cover_value=image_url
+            key, vndb_id=vn.id, title=vn.title, cover_source="url", cover_value=image_url
         )
         self.reload_config()
 
     def get_release_covers(self, vn_id: str) -> list[ReleaseCover]:
         return self.vndb.get_release_covers(vn_id)
 
-    def apply_cover_url(self, exe: str, url: str) -> None:
-        self.config.set_game_override(exe, cover_source="url", cover_value=url)
+    def apply_cover_url(self, key: str, url: str) -> None:
+        self.config.set_game_override(key, cover_source="url", cover_value=url)
         self.reload_config()
 
-    def apply_cover_local(self, exe: str, path: str) -> None:
-        self.config.set_game_override(exe, cover_source="local", cover_value=path)
+    def apply_cover_local(self, key: str, path: str) -> None:
+        self.config.set_game_override(key, cover_source="local", cover_value=path)
         self.reload_config()
 
-    def set_game_privacy(self, exe: str, mode: str) -> None:
-        self.config.set_game_override(exe, privacy=mode)
+    def set_game_privacy(self, key: str, mode: str) -> None:
+        self.config.set_game_override(key, privacy=mode)
         self.reload_config()
 
-    def set_game_path(self, exe: str, path: str) -> None:
+    def set_game_path(self, key: str, path: str) -> None:
         """User located a Library VN's exe by hand (it was never saved, or moved)."""
-        self.config.set_game_override(exe, path=path)
+        self.config.set_game_override(key, path=path)
         self.reload_config()
 
     def add_to_blacklist(self, exe: str) -> None:
@@ -393,16 +429,99 @@ class VNRPCEngine:
             self.config.save()
         self.reload_config()
 
-    def clear_override(self, exe: str) -> None:
-        self.config.clear_game_override(exe)
+    def clear_override(self, key: str) -> None:
+        self.config.clear_game_override(key)
         self.reload_config()
 
-    def reset_playtime(self, exe: str) -> None:
+    def reset_playtime(self, key: str) -> None:
         with self._playtime_lock:
-            self.config.reset_playtime(exe)
-            if game_key(exe) == self._playtime_key:
+            self.config.reset_playtime(key)
+            if key == self._playtime_key:
                 self._playtime_tick_start = time.time()
         self.reload_config()
+
+    def confirm_vn_match(self, key: str) -> None:
+        """Library: keep the automatic VNDB match for good (this is what list sync uses)."""
+        entry = self.config.game_override(key)
+        vn_id = entry.get("matched_vndb_id")
+        if vn_id:
+            self.config.set_game_override(key, vndb_id=vn_id, title=entry.get("name") or None)
+            self.reload_config()
+
+    def set_game_status(self, key: str, status: str) -> None:
+        """Library: the user set Playing / Finished / Stalled / Dropped by hand, or
+        cleared it (``""``)."""
+        if status not in STATUSES and status != "":
+            return
+        self.config.set_game_override(key, status=status)
+        vn_id = self.config.game_override(key).get("vndb_id")
+        if vn_id:
+            self._sync_list_status(key, vn_id, status, keep_existing=False)
+
+    def _sync_list_status(self, key: str, vn_id: str, status: str, *, keep_existing: bool) -> None:
+        """Push ``status`` to the user's VNDB list in the background (when enabled)."""
+        token = (self.config.get("vndb_token") or "").strip()
+        if not (self.config.get("vndb_sync") and token) or vn_id in self._syncing:
+            return
+        self._syncing.add(vn_id)
+
+        def worker() -> None:
+            try:
+                now = push_list_status(self.vndb, token, vn_id, status, keep_existing=keep_existing)
+            except Exception as exc:
+                self._on_status("vndb", False, f"VNDB list sync failed: {exc}")
+                return
+            finally:
+                self._syncing.discard(vn_id)
+            fields = {"vndb_synced": vn_id}
+            if now != status:
+                fields["status"] = now  # it was already on the list with another status
+            self.config.set_game_override(key, **fields)
+            self._on_status("vndb", True, f"VNDB list: {vn_id} → {now.capitalize() or 'no status'}")
+
+        threading.Thread(target=worker, name="vndb-sync", daemon=True).start()
+
+    def _rating_target(self, key: str) -> tuple[str, str]:
+        token = (self.config.get("vndb_token") or "").strip()
+        vn_id = self.config.game_override(key).get("vndb_id")
+        if not token:
+            raise VNDBError("add your VNDB token in Settings first")
+        if not vn_id:
+            raise VNDBError("confirm this VN's VNDB entry first")
+        return token, vn_id
+
+    def vndb_vote(self, key: str) -> int | None:
+        """The user's rating of this VN on VNDB (10-100), or None. Blocking; raises VNDBError."""
+        token, vn_id = self._rating_target(key)
+        vote = (self.vndb.get_list_entry(token, vn_id) or {}).get("vote") or None
+        self.config.set_game_override(key, vndb_vote=vote or 0)  # shown before VNDB answers next time
+        return vote
+
+    def set_vndb_vote(self, key: str, vote: int | None) -> None:
+        """Rate this VN on VNDB (10-100), or remove the rating with None. Blocking;
+        raises VNDBError. VNDB adds the VN to the list if it wasn't there."""
+        token, vn_id = self._rating_target(key)
+        if vote is not None and not 10 <= vote <= 100:
+            raise ValueError(f"a VNDB rating is 10-100, not {vote}")
+        self.vndb.update_list_entry(token, vn_id, {"vote": vote})
+        self.config.set_game_override(key, vndb_vote=vote or 0)
+
+    def take_screenshot(self, on_captured: Callable[[], None] | None = None) -> Path:
+        """Capture the running VN's window into its screenshot folder. Raises
+        CaptureError (or OSError when it can't be saved). ``on_captured`` runs as
+        soon as the image is taken, before the (slower) saving."""
+        snap = self.snapshot
+        if not snap.detected or not snap.hwnd:
+            raise CaptureError("No visual novel is running.")
+        img = capture_window(snap.hwnd)
+        if on_captured:
+            on_captured()
+        folder = screenshots.folder_for(self.config, snap.key, create=True)
+        return screenshots.save(img, folder, game=snap.game_name, section=snap.section_label)
+
+    def check_vndb_token(self, token: str) -> str:
+        """Settings' Test button: the token's username, or a VNDBError saying what's wrong."""
+        return self.vndb.list_user(token.strip())["username"]
 
     def search_vndb(self, query: str, limit: int = 12) -> list[VNResult]:
         return self.vndb.search_vn(query, limit=limit)
