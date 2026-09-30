@@ -21,6 +21,29 @@ Windows tray app. It reads the title of the VN's window, so it works with most e
 - NSFW covers are blurred and never sent to Discord unless you allow it.
 - Optional **launch at Windows startup**.
 
+## Screenshots
+
+<p align="center"><img src="image/main.png" width="560" alt="Main window: the VN being read and a preview of the Discord status"></p>
+
+**Library** — every VN you've read, and a page per VN with its status, VNDB rating, reading history and screenshots.
+
+<p align="center">
+  <img src="image/library.png" width="380" alt="Library">
+  <img src="image/vn-page.png" width="520" alt="A VN's page in the Library">
+</p>
+
+**Screenshots** — press Print Screen in game; browse, copy or delete them in the gallery.
+
+<p align="center"><img src="image/gallery.png" width="720" alt="Screenshot gallery"></p>
+
+**Share your week** — a card to paste on Discord.
+
+<p align="center"><img src="image/share-card.png" width="720" alt="My week in visual novels card"></p>
+
+**Themes** — Dark, Light, Sakura, a few presets, or your own colors.
+
+<p align="center"><img src="image/themes.png" width="900" alt="The main window in the Dark, Sakura and Lilac themes"></p>
+
 ## Install
 
 Download `VisualNovelRPC.exe` and run it. Nothing else is needed.
