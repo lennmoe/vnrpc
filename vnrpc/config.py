@@ -4,6 +4,7 @@ import json
 import os
 import tempfile
 import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -23,15 +24,31 @@ DEFAULTS: dict[str, Any] = {
     "allow_nsfw_covers": False,
     "use_steam_names": True,
     "show_elapsed": True,
+    "show_section": True,
+    "show_total_read": True,
     "clear_on_close": True,
     "idle_minutes": 0,
     "update_min_interval": 5,
     "start_minimized": False,
+    "theme": "system",
+    "custom_theme": {
+        "mode": "dark", "BG": "#111214", "SURFACE": "#1B1C20", "ACCENT": "#5865F2", "TEXT": "#F2F3F5",
+        "overrides": {},
+    },
     "default_asset_key": "vn_cover",
     "show_vndb_button": True,
     "title_rules": [],
     "blacklist_exe": ["osu!.exe", "Medal.exe", "Riot Client.exe"],
+    "vndb_token": "",
+    "vndb_sync": False,
+    "screenshot_hotkey": "PrintScreen",
+    "screenshot_volume": 30,  # %, 0 = silent
+    "screenshot_dir": "",  # "" = Pictures\Visual Novel RPC
+    "locale_emulator_path": "",  # LEProc.exe
+    "ntlea_path": "",  # ntleas.exe
 }
+
+STATUSES = ("playing", "finished", "stalled", "dropped")
 
 _LEGACY_GAME_FIELDS = {"custom_name": "title", "exe_path": "path"}
 
@@ -42,6 +59,18 @@ def game_key(exe: str) -> str:
     if name.endswith(".exe"):
         name = name[:-4]
     return name
+
+
+def _norm_path(path: Any) -> str:
+    return os.path.normcase(os.path.normpath(path)) if isinstance(path, str) and path else ""
+
+
+def _folder_name(path: str) -> str:
+    return os.path.basename(os.path.dirname(path or "")).strip().lower()
+
+
+def _day(ts: float | None = None) -> str:
+    return time.strftime("%Y-%m-%d", time.localtime(ts))
 
 
 def _safe_filename(key: str) -> str:
@@ -154,9 +183,9 @@ class Config:
             _atomic_write_yaml(CONFIG_FILE, self._data)
 
     def _filename_for(self, key: str, entry: dict[str, Any]) -> str:
-        """The file's basename: the VN's title once known, else its exe key.
-        Disambiguated against whatever other games are currently using that name."""
-        title = (entry.get("title") or "").strip()
+        """The file's basename: the VN's title (picked or detected) once known, else
+        its key. Disambiguated against whatever other games are currently using that name."""
+        title = (entry.get("title") or entry.get("name") or "").strip()
         base = _safe_filename(title) if title else _safe_filename(key)
         candidate = base
         n = 2
@@ -206,9 +235,39 @@ class Config:
     def data(self) -> dict[str, Any]:
         return self._data
 
-    def game_override(self, exe: str) -> dict[str, Any]:
+    def key_for(self, exe: str, exe_path: str = "") -> str:
+        """The Library entry a running game belongs to. Games are told apart by the
+        full path of their exe, because generic engine exes (cmvs64, SiglusEngine,
+        BGI…) are shared by many VNs. Entries keep the plain exe-name key they've
+        always had; a second game with the same exe gets ``"<exe>@<folder>"``."""
+        stem = game_key(exe or exe_path)
+        wanted = _norm_path(exe_path)
+        if not wanted:
+            return stem
+        folder = _folder_name(exe_path)
         with self._lock:
-            return dict(self._games.get(game_key(exe), {}))
+            for key, entry in self._games.items():
+                if _norm_path(entry.get("path")) == wanted:
+                    return key
+            for key, entry in self._games.items():
+                if game_key(key.split("@", 1)[0]) != stem:
+                    continue
+                saved = entry.get("path")
+                if not saved:
+                    return key  # tracked before paths were saved
+                if not os.path.exists(saved) and _folder_name(saved) == folder:
+                    return key  # same game, moved somewhere else
+            if stem not in self._games:
+                return stem
+            base = f"{stem}@{_safe_filename(folder) or 'game'}"
+            candidate, n = base, 2
+            while candidate in self._games:
+                candidate, n = f"{base}_{n}", n + 1
+            return candidate
+
+    def game_override(self, key: str) -> dict[str, Any]:
+        with self._lock:
+            return dict(self._games.get(key, {}))
 
     def all_games(self) -> dict[str, dict[str, Any]]:
         """Every tracked VN, keyed by its normalized id -- for the Library view."""
@@ -220,15 +279,15 @@ class Config:
         with self._lock:
             return [e["path"] for e in self._games.values() if isinstance(e.get("path"), str) and e["path"]]
 
-    def set_game_override(self, exe: str, **fields: Any) -> None:
-        key = game_key(exe)
+    def set_game_override(self, key: str, **fields: Any) -> None:
         with self._lock:
             entry = self._games.setdefault(key, {})
+            if fields.get("status") == "finished" and entry.get("status") != "finished":
+                entry["finished_at"] = int(time.time())  # for "VNs finished this week"
             entry.update({k: v for k, v in fields.items() if v is not None})
             self._save_game_file_locked(key)
 
-    def clear_game_override(self, exe: str) -> None:
-        key = game_key(exe)
+    def clear_game_override(self, key: str) -> None:
         with self._lock:
             if key in self._games:
                 del self._games[key]
@@ -236,7 +295,6 @@ class Config:
                 self._delete_game_file(key)
 
     def get_playtime_seconds(self, key: str) -> int:
-        """``key`` is already a normalized :func:`game_key`, not a raw exe name."""
         with self._lock:
             return int(self._games.get(key, {}).get("playtime_seconds", 0))
 
@@ -249,13 +307,28 @@ class Config:
             whole = int(total)
             self._playtime_frac[key] = total - whole
             entry["playtime_seconds"] = int(entry.get("playtime_seconds", 0)) + whole
+            if whole:
+                daily = entry.setdefault("daily", {})
+                today = _day()
+                daily[today] = int(daily.get(today, 0)) + whole
+            entry["last_played"] = int(time.time())
             self._save_game_file_locked(key)
 
-    def reset_playtime(self, exe: str) -> None:
-        key = game_key(exe)
+    def start_session(self, key: str) -> None:
+        """A game just came into focus: count one more reading session."""
+        if not key:
+            return
+        with self._lock:
+            entry = self._games.setdefault(key, {})
+            entry["sessions"] = int(entry.get("sessions", 0)) + 1
+            entry["last_played"] = int(time.time())
+            self._save_game_file_locked(key)
+
+    def reset_playtime(self, key: str) -> None:
         with self._lock:
             entry = self._games.get(key)
             if entry is not None:
-                entry.pop("playtime_seconds", None)
+                for stat in ("playtime_seconds", "daily", "sessions"):
+                    entry.pop(stat, None)
                 self._playtime_frac.pop(key, None)
                 self._save_game_file_locked(key)
