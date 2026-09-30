@@ -27,11 +27,11 @@ _PRIVACY_HELP = {
 
 
 class CoverDialog(ctk.CTkToplevel):
-    def __init__(self, master, engine: VNRPCEngine, exe: str, game_name: str) -> None:
+    def __init__(self, master, engine: VNRPCEngine, key: str, game_name: str) -> None:
         super().__init__(master)
         self.engine = engine
-        self.exe = exe
-        t.setup_window(self, title=f"Cover & privacy — {game_name or exe}", geometry="820x700",
+        self.key = key
+        t.setup_window(self, title=f"Cover & privacy — {game_name or key}", geometry="820x700",
                        minsize=(680, 540), modal_for=master)
         self.bind("<Escape>", lambda _e: self.destroy())
 
@@ -45,7 +45,7 @@ class CoverDialog(ctk.CTkToplevel):
         ctk.CTkLabel(row, text="Discord privacy for this game", font=t.font(13, "bold"),
                      text_color=t.TEXT).pack(side="left")
         self.privacy = t.segmented(row, list(_PRIVACY_HELP), command=self._set_privacy)
-        current = (self.engine.config.game_override(exe).get("privacy") or "full").capitalize()
+        current = (self.engine.config.game_override(key).get("privacy") or "full").capitalize()
         self.privacy.set(current if current in _PRIVACY_HELP else "Full")
         self.privacy.pack(side="right")
         self.privacy_help = t.muted(priv, _PRIVACY_HELP[self.privacy.get()], size=11)
@@ -53,8 +53,8 @@ class CoverDialog(ctk.CTkToplevel):
 
         tabs = ctk.CTkTabview(
             self, fg_color=t.SURFACE, border_width=1, border_color=t.BORDER, corner_radius=t.RADIUS,
-            segmented_button_fg_color=t.SURFACE_ALT, segmented_button_selected_color=t.ACCENT,
-            segmented_button_selected_hover_color=t.ACCENT_HOVER,
+            segmented_button_fg_color=t.SURFACE_ALT, segmented_button_selected_color=t.SELECTED,
+            segmented_button_selected_hover_color=t.SELECTED_HOVER,
             segmented_button_unselected_color=t.SURFACE_ALT,
             segmented_button_unselected_hover_color=t.SURFACE_HOVER, text_color=t.TEXT,
         )
@@ -70,7 +70,7 @@ class CoverDialog(ctk.CTkToplevel):
 
     def _set_privacy(self, value: str) -> None:
         self.privacy_help.configure(text=_PRIVACY_HELP.get(value, ""))
-        self.engine.set_game_privacy(self.exe, value.lower())
+        self.engine.set_game_privacy(self.key, value.lower())
 
     def _build_vndb(self, initial_query: str) -> None:
         top = ctk.CTkFrame(self.tab_vndb, fg_color="transparent")
@@ -166,11 +166,11 @@ class CoverDialog(ctk.CTkToplevel):
                 parent=self,
             ):
                 return
-        self.engine.apply_vn_choice(self.exe, vn, as_cover=True)
+        self.engine.apply_vn_choice(self.key, vn, as_cover=True)
         self.destroy()
 
     def _browse_covers(self, vn: VNResult) -> None:
-        ReleaseCoverDialog(self, self.engine, self.exe, vn, on_picked=self.destroy)
+        ReleaseCoverDialog(self, self.engine, self.key, vn, on_picked=self.destroy)
 
     def _crop_vn(self, vn: VNResult) -> None:
         if not vn.image_url:
@@ -195,7 +195,7 @@ class CoverDialog(ctk.CTkToplevel):
             if cropped is None:
                 return
             stored = store_cropped_image(cropped)
-            self.engine.apply_cover_local(self.exe, stored)
+            self.engine.apply_cover_local(self.key, stored)
             self.destroy()
 
         CropDialog(self, img, aspect=PREVIEW[0] / PREVIEW[1], on_done=on_done)
@@ -265,14 +265,14 @@ class CoverDialog(ctk.CTkToplevel):
 
     def _use_url(self) -> None:
         if self._url_cropped_path:
-            self.engine.apply_cover_local(self.exe, self._url_cropped_path)
+            self.engine.apply_cover_local(self.key, self._url_cropped_path)
             self.destroy()
             return
         url = self.url_entry.get().strip()
         if not url.lower().startswith(("http://", "https://")):
             messagebox.showwarning("Invalid URL", "Enter a http(s) image link.", parent=self)
             return
-        self.engine.apply_cover_url(self.exe, url)
+        self.engine.apply_cover_url(self.key, url)
         self.destroy()
 
     def _build_local(self) -> None:
@@ -337,5 +337,5 @@ class CoverDialog(ctk.CTkToplevel):
         except Exception:
             messagebox.showerror("Not an image", "That file can't be opened as an image.", parent=self)
             return
-        self.engine.apply_cover_local(self.exe, path)
+        self.engine.apply_cover_local(self.key, path)
         self.destroy()
