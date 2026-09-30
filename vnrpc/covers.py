@@ -143,8 +143,9 @@ def cached_cover_for_entry(entry: dict) -> str | None:
     stems = []
     if source == "url" and value:
         stems.append(url_cache_key(value))
-    if entry.get("vndb_id"):
-        stems.append(entry["vndb_id"])
+    vn_id = entry.get("vndb_id") or entry.get("matched_vndb_id")
+    if vn_id:
+        stems.append(vn_id)
     for stem in stems:
         matches = sorted(COVER_CACHE_DIR.glob(f"{stem}.*"))
         if matches:
