@@ -71,6 +71,20 @@ DEFAULT_RULES: tuple[Rule, ...] = (
         "chapter",
     ),
     Rule(
+        "chapter_titled",
+        r"\b(?:chapter|chapitre|chap\.?|ch\.?|episode|épisode|ep\.?|act|acte|scene|"
+        r"sc[eè]ne|part|partie|volume|vol\.?)\s*(?P<n>[0-9]{1,3}|[" + _ROMAN + r"]{1,7})"
+        r"\s*[:：,\-–—]\s*(?P<label>[^\W_].*)$",
+        "Chapter {n} — {label}",
+        "chapter",
+    ),
+    Rule(
+        "day_titled",
+        r"\b(?:day|jour)\s*(?P<n>[0-9]{1,3})\s*[:：,\-–—]\s*(?P<label>[^\W_].*)$",
+        "Day {n} — {label}",
+        "chapter",
+    ),
+    Rule(
         "chapter",
         r"\b(?:chapter|chapitre|chap\.?|ch\.?|episode|épisode|ep\.?|act|acte|scene|"
         r"sc[eè]ne|part|partie|volume|vol\.?)\s*(?P<n>[0-9]{1,3}|[" + _ROMAN + r"]{1,7})\b"
@@ -114,11 +128,13 @@ def build_rules(extra: list[dict[str, Any]] | None) -> list[Rule]:
 
 
 def _flex_pattern(name: str) -> str:
-    """A regex that matches ``name`` with any run of spaces/punctuation between tokens."""
+    """A regex that matches ``name`` with any run of spaces/punctuation between tokens.
+    The を particle matches both of its romanizations ("o" / "wo")."""
     collapsed = re.sub(r"[\s\W_]+", " ", name or "").strip().lower()
     if not collapsed:
         return ""
-    return re.escape(collapsed).replace(r"\ ", r"[\s\W_]+")
+    tokens = ["w?o" if tok in ("o", "wo") else re.escape(tok) for tok in collapsed.split(" ")]
+    return r"[\s\W_]+".join(tokens)
 
 
 def strip_game_name(title: str, game_name: str) -> str:
