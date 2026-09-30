@@ -14,6 +14,9 @@ Windows tray app. It reads the title of the VN's window, so it works with most e
 - **Covers** from VNDB, an image URL or a local file, with a built-in crop tool.
 - **Steam names**: installed Steam games get their proper name automatically.
 - **Library** of every VN you've played, with time read and a Play button.
+- **Share stats**: a "My week / my month in visual novels" card (covers, time read, VNs finished), copied as an image to paste on Discord.
+- **Japanese locale**: set a VN to start through Locale Emulator or NTLEA, and Play launches it that way.
+- **Screenshots**: press Print Screen while reading to capture the game's window. Each VN gets its own folder, and its page in the Library shows them; the gallery copies, opens or deletes them.
 - **Privacy per game**: Full, Partial (no chapter), Private (just "Visual Novel") or Off.
 - NSFW covers are blurred and never sent to Discord unless you allow it.
 - Optional **launch at Windows startup**.
@@ -67,4 +70,6 @@ Everything is in `%APPDATA%\VisualNovelRPC\`:
 |---|---|
 | `config.yaml` | app settings |
 | `games\<title>.yaml` | one file per VN (safe to edit or rename) |
-| `cache\` | VNDB results and covers |
+| `cache\` | VNDB results, covers and screenshot thumbnails |
+
+Screenshots go to `Pictures\Visual Novel RPC\<VN title>\` (you can pick another folder in Settings).
