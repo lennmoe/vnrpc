@@ -7,18 +7,15 @@ from collections import OrderedDict
 from typing import Callable
 
 import requests
-from PIL import Image, ImageChops, ImageDraw, ImageFilter
+from PIL import Image, ImageChops, ImageColor, ImageDraw, ImageFilter
 
 from ..paths import APP_ICON_PNG, COVER_CACHE_DIR
+from . import theme as t
 
 try:
     import customtkinter as ctk
 except Exception:  # pragma: no cover
     ctk = None
-
-_PLACEHOLDER_TOP = (43, 45, 66)
-_PLACEHOLDER_BOTTOM = (28, 29, 36)
-_PLACEHOLDER_FG = (110, 116, 140)
 
 _HEADERS = {"User-Agent": "VisualNovelRPC/1.0"}
 _WEB_CACHE_MAX = 64
@@ -143,6 +140,43 @@ def _run_async(url: str, deliver: Callable[["Image.Image | None"], None], widget
     threading.Thread(target=worker, daemon=True).start()
 
 
+class ThumbnailLoader:
+    """Makes thumbnails of local images one after another off the UI thread and
+    hands each ``(index, CTkImage)`` to ``callback`` on the Tk thread. ``cancel()``
+    (or ``widget`` being destroyed) drops whatever is still pending."""
+
+    def __init__(self, paths, size: tuple[int, int], callback: Callable[[int, "ctk.CTkImage"], None], *,
+                 widget, radius: int = 0) -> None:
+        self._cancelled = False
+        paths = list(paths)
+
+        def deliver(i: int, pil: Image.Image) -> None:
+            if self._cancelled or not _alive(widget):
+                return
+            # Made at twice the size so it stays sharp with Windows display scaling.
+            img = _round(pil, radius * 2) if radius else pil
+            callback(i, ctk.CTkImage(light_image=img, dark_image=img, size=size))
+
+        def worker() -> None:
+            from ..screenshots import thumbnail
+
+            for i, path in enumerate(paths):
+                if self._cancelled:
+                    return
+                pil = thumbnail(path, (size[0] * 2, size[1] * 2))
+                if pil is None:
+                    continue
+                try:
+                    widget.after(0, lambda i=i, pil=pil: deliver(i, pil))
+                except Exception:  # the window is gone
+                    return
+
+        threading.Thread(target=worker, name="thumbnails", daemon=True).start()
+
+    def cancel(self) -> None:
+        self._cancelled = True
+
+
 def _alive(widget) -> bool:
     try:
         return bool(widget.winfo_exists())
@@ -200,16 +234,18 @@ def _round(img: Image.Image, radius: int) -> Image.Image:
 
 def _placeholder(size: tuple[int, int]) -> Image.Image:
     w, h = size
-    img = Image.new("RGB", size, _PLACEHOLDER_BOTTOM)
+    top, bottom = ImageColor.getrgb(t.PLACEHOLDER_TOP), ImageColor.getrgb(t.PLACEHOLDER_BOTTOM)
+    fg = ImageColor.getrgb(t.PLACEHOLDER_FG)
+    img = Image.new("RGB", size, bottom)
     d = ImageDraw.Draw(img)
     for y in range(h):
-        t = y / max(1, h - 1)
-        d.line([0, y, w, y], fill=tuple(round(a + (b - a) * t) for a, b in zip(_PLACEHOLDER_TOP, _PLACEHOLDER_BOTTOM)))
+        k = y / max(1, h - 1)
+        d.line([0, y, w, y], fill=tuple(round(a + (b - a) * k) for a, b in zip(top, bottom)))
     s = min(w, h) * 0.36
     cx, cy = w / 2, h / 2
     lw = max(1, round(min(w, h) / 50))
     left = [(cx, cy - s * 0.32), (cx - s * 0.5, cy - s * 0.42), (cx - s * 0.5, cy + s * 0.32), (cx, cy + s * 0.42)]
     right = [(cx, cy - s * 0.32), (cx + s * 0.5, cy - s * 0.42), (cx + s * 0.5, cy + s * 0.32), (cx, cy + s * 0.42)]
-    d.line(left + [left[0]], fill=_PLACEHOLDER_FG, width=lw, joint="curve")
-    d.line(right + [right[0]], fill=_PLACEHOLDER_FG, width=lw, joint="curve")
+    d.line(left + [left[0]], fill=fg, width=lw, joint="curve")
+    d.line(right + [right[0]], fill=fg, width=lw, joint="curve")
     return img
