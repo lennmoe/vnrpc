@@ -7,9 +7,12 @@ from dataclasses import dataclass
 from typing import Callable
 
 from .engines import BLACKLIST_EXE, Engine, detect_engine, is_blacklisted
-from .winapi import WindowInfo, get_window_title, is_window, list_top_level_windows
+from .winapi import WindowInfo, get_window_title, is_window_visible, list_top_level_windows
 
 _KNOWN_GAME_SCORE = 1000
+# Polls in a row without the game before it counts as closed: rides out a window
+# being swapped or retitled without dropping the presence (or starting a new session).
+_GONE_AFTER = 3
 
 
 @dataclass
@@ -50,6 +53,8 @@ class WindowWatcher:
         self._locked_hwnd: int | None = None
         self._locked_engine: Engine | None = None
         self._last_key: tuple | None = None
+        self._reported = False  # a game was reported and its closing hasn't been yet
+        self._misses = 0
 
     def configure(
         self,
@@ -109,11 +114,13 @@ class WindowWatcher:
             blacklist = self._blacklist
             known_paths = self._known_paths
 
-        if self._locked_hwnd and is_window(self._locked_hwnd):
+        if self._locked_hwnd and is_window_visible(self._locked_hwnd):
             title = get_window_title(self._locked_hwnd)
             if title.strip():
                 self._emit(self._locked_hwnd, title, mode)
-            return
+                return
+        # The game's window is gone, hidden or untitled: look again (and report
+        # "nothing running" below if the game really closed).
         if self._locked_hwnd:
             self._locked_hwnd = None
             self._locked_engine = None
@@ -125,9 +132,11 @@ class WindowWatcher:
             else self._pick_manual(windows, manual_exe, manual_title)
         )
         if target is None:
-            if self._last_key is not None:
+            self._misses += 1
+            if self._reported and self._misses >= _GONE_AFTER:
+                self._on_change(None)  # if this raises, it's retried on the next poll
                 self._last_key = None
-                self._on_change(None)
+                self._reported = False
             return
         win, engine = target
         self._locked_hwnd = win.hwnd
@@ -143,6 +152,7 @@ class WindowWatcher:
         win: WindowInfo | None = None,
         engine: Engine | None = None,
     ) -> None:
+        self._misses = 0
         key = (hwnd, title)
         if key == self._last_key:
             return
@@ -152,6 +162,7 @@ class WindowWatcher:
         if win is None:
             return
         engine = engine or self._locked_engine
+        self._reported = True
         self._on_change(
             TargetState(
                 hwnd=hwnd,
