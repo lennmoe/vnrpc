@@ -33,14 +33,14 @@ class ReleaseCoverDialog(ctk.CTkToplevel):
         self,
         master,
         engine: VNRPCEngine,
-        exe: str,
+        key: str,
         vn: VNResult,
         *,
         on_picked: Callable[[], None] | None = None,
     ) -> None:
         super().__init__(master)
         self.engine = engine
-        self.exe = exe
+        self.key = key
         self.vn = vn
         self.on_picked = on_picked
         self._covers: list[ReleaseCover] = []
@@ -121,7 +121,7 @@ class ReleaseCoverDialog(ctk.CTkToplevel):
                 parent=self,
             ):
                 return
-        self.engine.apply_release_cover(self.exe, self.vn, rc.url)
+        self.engine.apply_release_cover(self.key, self.vn, rc.url)
         self._finish()
 
     def _finish(self) -> None:
@@ -143,7 +143,7 @@ class ReleaseCoverDialog(ctk.CTkToplevel):
                 if cropped is None:
                     return
                 stored = store_cropped_image(cropped)
-                self.engine.apply_cover_local(self.exe, stored)
+                self.engine.apply_cover_local(self.key, stored)
                 self._finish()
 
             CropDialog(self, img, aspect=PREVIEW_ASPECT, on_done=on_done)
