@@ -106,6 +106,33 @@ def _atomic_write_yaml(path: Path, data: dict[str, Any]) -> None:
         raise
 
 
+def _read_files() -> tuple[dict[str, Any], dict[str, dict[str, Any]], dict[str, str]]:
+    """config.yaml, and every games/*.yaml by key (plus the file stem it lives in)."""
+    data: dict[str, Any] = {}
+    try:
+        with open(CONFIG_FILE, "r", encoding="utf-8") as fh:
+            data = yaml.safe_load(fh) or {}
+    except (FileNotFoundError, yaml.YAMLError, OSError):
+        data = {}
+    if not isinstance(data, dict):
+        data = {}
+
+    games: dict[str, dict[str, Any]] = {}
+    game_filenames: dict[str, str] = {}
+    for path in sorted(GAMES_DIR.glob("*.yaml")):
+        try:
+            with open(path, "r", encoding="utf-8") as fh:
+                entry = yaml.safe_load(fh) or {}
+        except (OSError, yaml.YAMLError):
+            continue
+        if not isinstance(entry, dict):
+            continue
+        key = entry.pop("_key", None) or path.stem
+        games[key] = entry
+        game_filenames[key] = path.stem
+    return data, games, game_filenames
+
+
 class Config:
     def __init__(
         self,
@@ -125,36 +152,28 @@ class Config:
         if not CONFIG_FILE.exists() and SETTINGS_FILE.exists():
             return cls._migrate_from_legacy()
 
-        data: dict[str, Any] = {}
-        try:
-            with open(CONFIG_FILE, "r", encoding="utf-8") as fh:
-                data = yaml.safe_load(fh) or {}
-        except (FileNotFoundError, yaml.YAMLError, OSError):
-            data = {}
-        if not isinstance(data, dict):
-            data = {}
-
-        games: dict[str, dict[str, Any]] = {}
-        game_filenames: dict[str, str] = {}
-        for path in sorted(GAMES_DIR.glob("*.yaml")):
-            try:
-                with open(path, "r", encoding="utf-8") as fh:
-                    entry = yaml.safe_load(fh) or {}
-            except (OSError, yaml.YAMLError):
-                continue
-            if not isinstance(entry, dict):
-                continue
-            key = entry.pop("_key", None) or path.stem
-            games[key] = entry
-            game_filenames[key] = path.stem
-
-        cfg = cls(data, games, game_filenames)
+        cfg = cls(*_read_files())
         if not CONFIG_FILE.exists():
             cfg.save()
         for key, entry in list(cfg._games.items()):
             if cfg._game_filenames.get(key) != cfg._filename_for(key, entry):
                 cfg._save_game_file(key)
         return cfg
+
+    def reload(self) -> None:
+        """Re-read everything from disk, in place (after importing a backup), so
+        whoever holds this Config sees the new settings and Library."""
+        data, games, filenames = _read_files()
+        with self._lock:
+            self._data = _merge_defaults(data)
+            self._games = games
+            self._game_filenames = filenames
+            self._playtime_frac.clear()
+
+    @property
+    def lock(self) -> threading.RLock:
+        """Held while the files on disk are swapped, so nothing is saved halfway."""
+        return self._lock
 
     @classmethod
     def _migrate_from_legacy(cls) -> "Config":

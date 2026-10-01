@@ -18,6 +18,7 @@ Windows tray app. It reads the title of the VN's window, so it works with most e
 - **Japanese locale**: set a VN to start through Locale Emulator or NTLEA, and Play launches it that way.
 - **Screenshots**: press Print Screen while reading to capture the game's window. Each VN gets its own folder, and its page in the Library shows them; the gallery copies, opens or deletes them.
 - **Idle mode** (optional): when the VN stays in the background, your Discord status clears and the timers stop until you go back to it.
+- **Export / import your data** (settings, Library, time read, custom covers) as one file, e.g. to move to another PC.
 - **Privacy per game**: Full, Partial (no chapter), Private (just "Visual Novel") or Off.
 - NSFW covers are blurred and never sent to Discord unless you allow it.
 - Optional **launch at Windows startup**.

@@ -5,11 +5,12 @@ import os
 import re
 import threading
 import tkinter as tk
+from pathlib import Path
 from tkinter import filedialog, messagebox
 
 import customtkinter as ctk
 
-from .. import __version__, autostart, hotkey, launcher, screenshots, updater
+from .. import __version__, autostart, backup, hotkey, launcher, screenshots, updater
 from ..config import DEFAULTS
 from ..core import VNRPCEngine
 from ..engines import normalize_exe
@@ -195,6 +196,18 @@ class SettingsPage(ctk.CTkFrame):
         )
         if not updater.supported():
             self.check_updates.configure(state="disabled")
+
+        _section(frame, "Your data")
+        t.muted(
+            frame,
+            "Settings, the Library (time read, history, statuses) and custom covers in one file, "
+            "to move to another PC or keep a copy. It includes your VNDB token: don't share it.",
+            size=11, wraplength=480,
+        ).pack(fill="x", padx=16, pady=(0, 6))
+        row = ctk.CTkFrame(frame, fg_color="transparent")
+        row.pack(fill="x", padx=16, pady=4)
+        t.secondary_button(row, "Export…", self._export_data, width=110).pack(side="left")
+        t.secondary_button(row, "Import…", self._import_data, width=110).pack(side="left", padx=(8, 0))
 
         _section(frame, "Advanced")
         self.min_interval = _field(frame, "Min. seconds between presence updates",
@@ -403,6 +416,44 @@ class SettingsPage(ctk.CTkFrame):
                 raise ValueError(f"Line {n}: invalid regex ({exc}).") from None
             out.append(rule)
         return out
+
+    def _export_data(self) -> None:
+        path = filedialog.asksaveasfilename(
+            parent=self, title="Export data", defaultextension=".zip",
+            initialfile=backup.default_name(), filetypes=[("Visual Novel RPC backup", "*.zip")],
+        )
+        if not path:
+            return
+        try:
+            count = backup.export_data(self.cfg, Path(path))
+        except OSError as exc:
+            messagebox.showerror("Export data", f"Couldn't write the file: {exc}", parent=self)
+            return
+        messagebox.showinfo("Export data", f"Saved {count} VN{'s' * (count != 1)} and your settings to\n{path}",
+                            parent=self)
+
+    def _import_data(self) -> None:
+        path = filedialog.askopenfilename(
+            parent=self, title="Import data", filetypes=[("Visual Novel RPC backup", "*.zip")],
+        )
+        if not path or not messagebox.askyesno(
+            "Import data",
+            "Replace your settings and Library with the ones in this file?\n\n"
+            f"What you have now is saved first in\n{backup.BACKUP_DIR}",
+            parent=self, icon="warning",
+        ):
+            return
+        try:
+            count = backup.import_data(self.cfg, Path(path))
+        except (backup.BackupError, OSError) as exc:
+            messagebox.showerror("Import data", f"Couldn't import it: {exc}", parent=self)
+            return
+        self.engine.reload_config()
+        self.app.apply_screenshot_settings()
+        messagebox.showinfo("Import data", f"Loaded {count} VN{'s' * (count != 1)} and the settings.",
+                            parent=self)
+        app = self.app
+        app.after(50, app.rebuild_ui)  # new theme, and every page shows the imported data
 
     def _save(self) -> None:
         try:
