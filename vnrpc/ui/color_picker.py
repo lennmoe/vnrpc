@@ -154,8 +154,9 @@ class ColorPicker(ctk.CTkToplevel):
     def _close(self) -> None:
         master = self.master
         self.destroy()
-        try:  # give the modal grab back to the dialog that opened us
-            master.grab_set()
+        try:  # give the modal grab back to the dialog that opened us, if any
+            if isinstance(master, ctk.CTkToplevel):
+                master.grab_set()
             master.focus_force()
         except Exception:
             pass
