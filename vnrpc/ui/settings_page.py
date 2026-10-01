@@ -249,10 +249,8 @@ class SettingsPage(ctk.CTkFrame):
                 self._stop_listening()
         # Windows only reports Print Screen when it's released.
         elif pressed != (event.keysym == "Print"):
-            combo = hotkey.from_key_event(event.keysym, event.state)
-            if combo == "F12":
-                self.hotkey_btn.configure(text="F12 is kept by Windows")
-            elif combo:  # None while only a modifier is down
+            combo = hotkey.from_key_event(event.keysym, event.state, event.keycode)
+            if combo:  # None while only a modifier is down
                 self._hotkey_value = combo
                 self._stop_listening()
         return "break"
