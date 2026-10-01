@@ -26,20 +26,28 @@ _PRIVACY_HELP = {
 }
 
 
-class CoverDialog(ctk.CTkToplevel):
-    def __init__(self, master, engine: VNRPCEngine, key: str, game_name: str) -> None:
-        super().__init__(master)
-        self.engine = engine
+class CoverPage(ctk.CTkFrame):
+    """The cover and Discord privacy of the game being read. Picking a cover goes
+    back to the Now reading page."""
+
+    def __init__(self, master, app, key: str, game_name: str) -> None:
+        super().__init__(master, fg_color="transparent")
+        self.app = app
+        self.engine: VNRPCEngine = app.engine
         self.key = key
-        t.setup_window(self, title=f"Cover & privacy — {game_name or key}", geometry="820x700",
-                       minsize=(680, 540), modal_for=master)
-        self.bind("<Escape>", lambda _e: self.destroy())
 
         self._results: list[VNResult] = []
         self._search_gen = 0
 
+        top = ctk.CTkFrame(self, fg_color="transparent")
+        top.pack(fill="x", padx=12, pady=(12, 0))
+        t.link_button(top, "←  Now reading", self._done).pack(side="left")
+        head = ctk.CTkFrame(self, fg_color="transparent")
+        head.pack(fill="x", padx=20, pady=(6, 0))
+        t.page_title(head, t.ellipsize(f"Cover & privacy — {game_name or key}", 70)).pack(side="left")
+
         priv = t.card(self)
-        priv.pack(fill="x", padx=16, pady=(16, 0))
+        priv.pack(fill="x", padx=16, pady=(12, 0))
         row = ctk.CTkFrame(priv, fg_color="transparent")
         row.pack(fill="x", padx=16, pady=(12, 2))
         ctk.CTkLabel(row, text="Discord privacy for this game", font=t.font(13, "bold"),
@@ -67,6 +75,15 @@ class CoverDialog(ctk.CTkToplevel):
         self._build_vndb(game_name)
         self._build_url()
         self._build_local()
+
+    def on_key(self, event) -> str | None:
+        if event.keysym == "Escape" and event.type == tk.EventType.KeyPress:
+            self._done()
+            return "break"
+        return None
+
+    def _done(self) -> None:
+        self.app.show_home()
 
     def _set_privacy(self, value: str) -> None:
         self.privacy_help.configure(text=_PRIVACY_HELP.get(value, ""))
@@ -167,10 +184,10 @@ class CoverDialog(ctk.CTkToplevel):
             ):
                 return
         self.engine.apply_vn_choice(self.key, vn, as_cover=True)
-        self.destroy()
+        self._done()
 
     def _browse_covers(self, vn: VNResult) -> None:
-        ReleaseCoverDialog(self, self.engine, self.key, vn, on_picked=self.destroy)
+        ReleaseCoverDialog(self, self.engine, self.key, vn, on_picked=self._done)
 
     def _crop_vn(self, vn: VNResult) -> None:
         if not vn.image_url:
@@ -196,7 +213,7 @@ class CoverDialog(ctk.CTkToplevel):
                 return
             stored = store_cropped_image(cropped)
             self.engine.apply_cover_local(self.key, stored)
-            self.destroy()
+            self._done()
 
         CropDialog(self, img, aspect=PREVIEW[0] / PREVIEW[1], on_done=on_done)
 
@@ -266,14 +283,14 @@ class CoverDialog(ctk.CTkToplevel):
     def _use_url(self) -> None:
         if self._url_cropped_path:
             self.engine.apply_cover_local(self.key, self._url_cropped_path)
-            self.destroy()
+            self._done()
             return
         url = self.url_entry.get().strip()
         if not url.lower().startswith(("http://", "https://")):
             messagebox.showwarning("Invalid URL", "Enter a http(s) image link.", parent=self)
             return
         self.engine.apply_cover_url(self.key, url)
-        self.destroy()
+        self._done()
 
     def _build_local(self) -> None:
         wrap = ctk.CTkFrame(self.tab_local, fg_color="transparent")
@@ -338,4 +355,4 @@ class CoverDialog(ctk.CTkToplevel):
             messagebox.showerror("Not an image", "That file can't be opened as an image.", parent=self)
             return
         self.engine.apply_cover_local(self.key, path)
-        self.destroy()
+        self._done()

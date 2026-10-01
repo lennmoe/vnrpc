@@ -8,32 +8,27 @@ from ..core import VNRPCEngine, format_playtime
 from ..covers import cached_cover_for_entry
 from ..engines import is_blacklisted
 from . import theme as t
-from .game_dialog import GameDialog, display_name, launch_game, locate_game, remove_game
+from .game_page import display_name, launch_game, locate_game, remove_game
 from .images import load_image
-from .screenshots_dialog import ScreenshotsDialog
-from .share_dialog import ShareCardDialog
 
 THUMB = (60, 84)
 _SORTS = ("Most read", "Recent", "A–Z")
 _ALL = "All statuses"
 
 
-class LibraryDialog(ctk.CTkToplevel):
-    def __init__(self, master, engine: VNRPCEngine) -> None:
-        super().__init__(master)
-        self.engine = engine
-        t.setup_window(self, title="Library", geometry="700x640", minsize=(580, 460), modal_for=master)
-        self.bind("<Escape>", lambda _e: self.destroy())
+class LibraryPage(ctk.CTkFrame):
+    """Every VN played, with time read; a card opens the game's page."""
+
+    def __init__(self, master, app) -> None:
+        super().__init__(master, fg_color="transparent")
+        self.app = app
+        self.engine: VNRPCEngine = app.engine
 
         head = ctk.CTkFrame(self, fg_color="transparent")
         head.pack(fill="x", padx=20, pady=(18, 10))
-        ctk.CTkLabel(head, text="Library", font=t.font(20, "bold"), text_color=t.TEXT).pack(side="left")
-        self.search = t.entry(head, placeholder_text="Filter…", width=200)
+        t.page_title(head, "Library").pack(side="left")
+        self.search = t.entry(head, placeholder_text="Filter…", width=220)
         self.search.pack(side="right")
-        t.secondary_button(head, "Screenshots", lambda: ScreenshotsDialog(self, self.engine), width=110).pack(
-            side="right", padx=8)
-        t.secondary_button(head, "Share stats", lambda: ShareCardDialog(self, self.engine), width=110).pack(
-            side="right")
         self.search.bind("<KeyRelease>", lambda _e: self._reload())
 
         tools = ctk.CTkFrame(self, fg_color="transparent")
@@ -56,6 +51,7 @@ class LibraryDialog(ctk.CTkToplevel):
         self.list_box = t.scrollable(self)
         self.list_box.pack(fill="both", expand=True, padx=12, pady=(0, 14))
 
+    def on_show(self) -> None:
         self._reload()
 
     def _reload(self) -> None:
@@ -158,7 +154,7 @@ class LibraryDialog(ctk.CTkToplevel):
         )
 
     def _open(self, key: str) -> None:
-        GameDialog(self, self.engine, key, on_change=self._reload)
+        self.app.show_game(key)
 
     def _remove(self, key: str, name: str) -> None:
         if remove_game(self, self.engine, key, name):

@@ -20,8 +20,8 @@ from . import theme as t
 from .images import ThumbnailLoader, load_image
 
 COVER = (96, 136)
-WIDTH = 980
 LEFT_W = 430  # cover, status, launcher; the stats and chart take the rest
+SIDE_BY_SIDE = 880  # narrower than this, the stats and chart go under the left column
 SHOT = (160, 90)
 SHOTS_SHOWN = 5
 _CHART_FONT = ("Segoe UI", 9)
@@ -96,38 +96,60 @@ def remove_game(parent, engine: VNRPCEngine, key: str, name: str) -> bool:
     return True
 
 
-class GameDialog(ctk.CTkToplevel):
-    """One Library game, laid out wide: cover, status and launcher on the left,
-    reading stats and a time-read-per-day/week chart on the right, then screenshots."""
+class GamePage(ctk.CTkFrame):
+    """One Library game: cover, status and launcher on the left, reading stats and a
+    time-read-per-day/week chart on the right (under it when narrow), then screenshots."""
 
-    def __init__(self, master, engine: VNRPCEngine, key: str, on_change: Callable[[], None]) -> None:
-        super().__init__(master)
-        self.engine = engine
+    def __init__(self, master, app, key: str) -> None:
+        super().__init__(master, fg_color="transparent")
+        self.app = app
+        self.engine: VNRPCEngine = app.engine
         self.key = key
-        self._on_change = on_change
-        entry = engine.config.game_override(key)
+        entry = self.engine.config.game_override(key)
         self.name = display_name(key, entry)
-        t.setup_window(self, title=self.name, geometry=f"{WIDTH}x640", minsize=(900, 480), modal_for=master)
-        self.bind("<Escape>", lambda _e: self.destroy())
+
+        top = ctk.CTkFrame(self, fg_color="transparent")
+        top.pack(fill="x", padx=12, pady=(12, 0))
+        t.link_button(top, "←  Library", app.show_library).pack(side="left")
 
         body = t.scrollable(self)
-        body.pack(fill="both", expand=True, padx=8, pady=(8, 0))
-        cols = ctk.CTkFrame(body, fg_color="transparent")
+        body.pack(fill="both", expand=True, padx=8, pady=(4, 0))
+        self._cols = cols = ctk.CTkFrame(body, fg_color="transparent")
         cols.pack(fill="x")
-        cols.grid_columnconfigure(0, minsize=LEFT_W)
-        cols.grid_columnconfigure(1, weight=1)
-        left = ctk.CTkFrame(cols, fg_color="transparent", width=LEFT_W)
-        left.grid(row=0, column=0, sticky="nsew")
-        right = ctk.CTkFrame(cols, fg_color="transparent")
-        right.grid(row=0, column=1, sticky="nsew")
-        self._build_header(left, entry)
-        self._build_status(left, entry)
-        self._build_launch(left, entry)
-        self._build_stats(right, entry)
-        self._build_chart(right, entry)
+        self._left = ctk.CTkFrame(cols, fg_color="transparent", width=LEFT_W)
+        self._right = ctk.CTkFrame(cols, fg_color="transparent")
+        self._wide: bool | None = None
+        self._layout(wide=True)
+        cols.bind("<Configure>", lambda e: self._layout(e.width >= SIDE_BY_SIDE))
+        self._build_header(self._left, entry)
+        self._build_status(self._left, entry)
+        self._build_launch(self._left, entry)
+        self._build_stats(self._right, entry)
+        self._build_chart(self._right, entry)
         self._build_screenshots(body)
         self._build_footer(entry)
-        self._fit_height(body)
+
+    def _layout(self, wide: bool) -> None:
+        if wide == self._wide:
+            return
+        self._wide = wide
+        cols, left, right = self._cols, self._left, self._right
+        if wide:
+            cols.grid_columnconfigure(0, minsize=LEFT_W, weight=0)
+            cols.grid_columnconfigure(1, weight=1)
+            left.grid(row=0, column=0, sticky="nsew")
+            right.grid(row=0, column=1, sticky="nsew")
+        else:
+            cols.grid_columnconfigure(0, minsize=0, weight=1)
+            cols.grid_columnconfigure(1, weight=0)
+            left.grid(row=0, column=0, sticky="nsew")
+            right.grid(row=1, column=0, sticky="nsew")
+
+    def on_key(self, event) -> str | None:
+        if event.keysym == "Escape" and event.type == tk.EventType.KeyPress:
+            self.app.show_library()
+            return "break"
+        return None
 
     def _build_header(self, parent, entry: dict) -> None:
         head = t.card(parent)
@@ -249,7 +271,6 @@ class GameDialog(ctk.CTkToplevel):
                 return
             self._vote = vote
             self.vote_state.configure(text="Saved on VNDB ✓", text_color=t.GREEN)
-            self._on_change()
 
         self._in_background(lambda: self.engine.set_vndb_vote(self.key, vote), done)
 
@@ -288,7 +309,6 @@ class GameDialog(ctk.CTkToplevel):
         self._launcher = which
         self.engine.config.set_game_override(self.key, launcher=which)
         self._show_launch_note()
-        self._on_change()
 
     def _build_stats(self, parent, entry: dict) -> None:
         daily = entry.get("daily") or {}
@@ -348,9 +368,7 @@ class GameDialog(ctk.CTkToplevel):
         )
 
     def _open_gallery(self, select=None) -> None:
-        from .screenshots_dialog import ScreenshotsDialog  # it imports this module
-
-        ScreenshotsDialog(self, self.engine, key=self.key, select=select)
+        self.app.show_screenshots(key=self.key, select=select, back=lambda: self.app.show_game(self.key))
 
     def _on_screenshots_changed(self, key: str) -> None:
         if key == self.key and self.winfo_exists():
@@ -372,7 +390,7 @@ class GameDialog(ctk.CTkToplevel):
         note = (f"History since {stats.short_date(since)}. Time read before that only counts in the total."
                 if since else "History fills in as you read — time read before this update only counts "
                               "in the total.")
-        t.muted(box, note, size=11, wraplength=WIDTH - LEFT_W - 80).pack(fill="x", padx=16, pady=(0, 12))
+        t.muted(box, note, size=11, wraplength=440).pack(fill="x", padx=16, pady=(0, 12))
         self._fill_chart()
 
     def _fill_chart(self) -> None:
@@ -396,31 +414,16 @@ class GameDialog(ctk.CTkToplevel):
         bar.pack(fill="x", padx=16, pady=(8, 16))
         exe_path = entry.get("path", "")
         if exe_path:
-            t.primary_button(bar, "▶  Play", lambda: launch_game(self, self.engine, self.key, self._changed),
+            t.primary_button(bar, "▶  Play", lambda: launch_game(self, self.engine, self.key, self._reopen),
                              width=96).pack(side="left")
         else:
             t.secondary_button(bar, "Locate…", lambda: locate_game(self, self.engine, self.key, self._reopen),
                                width=96).pack(side="left")
         t.danger_button(bar, "Remove", self._remove, width=90).pack(side="left", padx=8)
-        t.secondary_button(bar, "Close", self.destroy, width=90).pack(side="right")
-
-    def _fit_height(self, body) -> None:
-        """Open tall enough to show everything without scrolling, when the screen allows."""
-        self.update_idletasks()
-        chrome = self.winfo_reqheight() - body._parent_canvas.winfo_reqheight()
-        wanted = body.winfo_reqheight() + chrome + 16
-        height = min(wanted, self.winfo_screenheight() - 80)
-        self.geometry(f"{WIDTH}x{height}")
-
-    def _changed(self) -> None:
-        self._on_change()
 
     def _reopen(self) -> None:
         """Rebuild with fresh data (after something that changes the header or footer)."""
-        self._on_change()
-        master = self.master
-        self.destroy()
-        GameDialog(master, self.engine, self.key, self._on_change)
+        self.app.show_game(self.key)
 
     def _toggle_status(self, value: str) -> None:
         if self.status.get() == value:
@@ -429,7 +432,6 @@ class GameDialog(ctk.CTkToplevel):
         else:
             self.status.set(value)
             self.engine.set_game_status(self.key, value.lower())
-        self._on_change()
 
     def _confirm_match(self) -> None:
         self.engine.confirm_vn_match(self.key)
@@ -437,8 +439,7 @@ class GameDialog(ctk.CTkToplevel):
 
     def _remove(self) -> None:
         if remove_game(self, self.engine, self.key, self.name):
-            self._on_change()
-            self.destroy()
+            self.app.show_library()
 
     def destroy(self) -> None:
         screenshots.unsubscribe(self._on_screenshots_changed)

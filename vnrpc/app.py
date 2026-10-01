@@ -19,18 +19,33 @@ from .paths import SCREENSHOT_SOUND, ensure_dirs
 from .presence import Activity
 from .sound import Sound
 from .ui import theme as t
-from .ui.cover_dialog import CoverDialog
+from .ui.cover_page import CoverPage
+from .ui.game_page import GamePage
 from .ui.images import app_icon_image, fetch_full_image_async, make_ctk_image, tray_image
-from .ui.library_dialog import LibraryDialog
-from .ui.settings_dialog import SettingsDialog
+from .ui.library_page import LibraryPage
+from .ui.screenshots_page import ScreenshotsPage
+from .ui.settings_page import SettingsPage
+from .ui.share_page import SharePage
 from .ui.toast import show_toast
 from .winapi import CaptureError, client_rect_on_screen
 
 COVER_SIZE = (150, 212)
 THUMB_SIZE = (76, 76)
 TOAST_THUMB = (96, 54)
+SIDEBAR_W = 210
 _NO_WINDOWS = "(no windows found)"
 _PICK_WINDOW = "Pick the game window…"
+# Sidebar entries. A game's page sits under Library, the cover page under Now reading.
+_NAV = (
+    ("home", "Now reading"),
+    ("library", "Library"),
+    ("screenshots", "Screenshots"),
+    ("share", "Share"),
+    ("settings", "Settings"),
+)
+_NAV_OF = {"game": "library", "cover": "home"}
+# Built again each time they're shown, and dropped when another page is.
+_TRANSIENT = {"game", "cover", "settings"}
 
 
 class App(ctk.CTk):
@@ -43,8 +58,8 @@ class App(ctk.CTk):
         t.apply_theme(self.config_data.get("theme", t.SYSTEM))
         ctk.set_default_color_theme("dark-blue")
         self.title("Visual Novel RPC")
-        self.geometry("700x700")
-        self.minsize(620, 660)
+        self.geometry("1200x760")
+        self.minsize(900, 640)
         self.configure(fg_color=t.BG)
         t.set_icon(self)
 
@@ -65,12 +80,15 @@ class App(ctk.CTk):
         self._last_snapshot = Snapshot()
         self._activity: Activity | None = None
         self._window_map: dict[str, str] = {}
-        self._dialogs: dict[str, ctk.CTkToplevel] = {}
+        self._pages: dict[str, ctk.CTkFrame] = {}
+        self._page: ctk.CTkFrame | None = None
+        self._page_name = ""
         self._cover_key: tuple | None = ("unset",)
         self._cover_pil: Image.Image | None = None
         self._asset_thumb = app_icon_image(THUMB_SIZE[0], radius=8)
 
         self._build()
+        self.show_home()
         self._render_snapshot(Snapshot())
         self._poll_events()
         self._tick_elapsed()
@@ -78,6 +96,9 @@ class App(ctk.CTk):
 
         self.engine.start()
         self._hotkey.start()
+        # Keys go to the page on screen (gallery arrows, Esc to go back, capturing a hotkey…).
+        self.bind("<KeyPress>", self._on_key)
+        self.bind("<KeyRelease>", self._on_key)
         self.protocol("WM_DELETE_WINDOW", self._hide_to_tray)
         self._tray = None
         self._tray_failed = False
@@ -86,36 +107,64 @@ class App(ctk.CTk):
             self.after(300, self._hide_to_tray)
 
     def _build(self) -> None:
-        self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(2, weight=1)
-        self._build_header()
+        """The sidebar, and the content area that shows one page at a time."""
+        self.grid_columnconfigure(2, weight=1)
+        self.grid_rowconfigure(0, weight=1)
+        self._build_sidebar()
+        ctk.CTkFrame(self, fg_color=t.BORDER, width=1, corner_radius=0).grid(row=0, column=1, sticky="ns")
+        self._content = ctk.CTkFrame(self, fg_color="transparent", corner_radius=0)
+        self._content.grid(row=0, column=2, sticky="nsew")
+        self._content.grid_columnconfigure(0, weight=1)
+        self._content.grid_rowconfigure(0, weight=1)
+
+        self.home = ctk.CTkFrame(self._content, fg_color="transparent")
+        self.home.grid_columnconfigure(0, weight=1)
+        self.home.grid_rowconfigure(3, weight=1)  # the card keeps its height; space goes below
         self._build_paused_banner()
         self._build_card()
         self._build_detection_bar()
-        self._build_footer()
+        self.status_line = t.muted(self.home, "", size=11, anchor="e", justify="right")
+        self.status_line.grid(row=4, column=0, sticky="ew", padx=24, pady=(0, 14))
+        self._pages = {"home": self.home}
+        self._page, self._page_name = None, ""
         self._sync_mode_widgets()
         if self.mode.get() == "Manual":
             self._refresh_windows()
 
-    def _build_header(self) -> None:
-        header = ctk.CTkFrame(self, fg_color="transparent")
-        header.grid(row=0, column=0, sticky="ew", padx=20, pady=(18, 12))
-        header.grid_columnconfigure(1, weight=1)
+    def _build_sidebar(self) -> None:
+        side = ctk.CTkFrame(self, fg_color=t.SURFACE, corner_radius=0, width=SIDEBAR_W)
+        side.grid(row=0, column=0, sticky="ns")
+        side.pack_propagate(False)
 
-        ctk.CTkLabel(header, text="", image=app_icon_image(40, radius=10)).grid(row=0, column=0, rowspan=2, padx=(0, 12))
-        ctk.CTkLabel(header, text="Visual Novel RPC", font=t.font(20, "bold"), text_color=t.TEXT,
-                     anchor="w").grid(row=0, column=1, sticky="sw")
-        t.muted(header, "Discord Rich Presence for your visual novels").grid(row=1, column=1, sticky="nw")
+        brand = ctk.CTkFrame(side, fg_color="transparent")
+        brand.pack(fill="x", padx=16, pady=(18, 18))
+        ctk.CTkLabel(brand, text="", image=app_icon_image(34, radius=9)).pack(side="left", padx=(0, 10))
+        names = ctk.CTkFrame(brand, fg_color="transparent")
+        names.pack(side="left", fill="x")
+        ctk.CTkLabel(names, text="Visual Novel", font=t.font(15, "bold"), text_color=t.TEXT, anchor="w",
+                     height=18).pack(fill="x")
+        ctk.CTkLabel(names, text="RPC", font=t.font(12, "bold"), text_color=t.ACCENT, anchor="w",
+                     height=16).pack(fill="x")
 
-        pills = ctk.CTkFrame(header, fg_color="transparent")
-        pills.grid(row=0, column=2, rowspan=2, sticky="e")
-        self.pill_game = _Pill(pills, "Game")
-        self.pill_game.pack(side="left", padx=(0, 8))
-        self.pill_discord = _Pill(pills, "Discord")
-        self.pill_discord.pack(side="left")
+        self._nav_buttons: dict[str, ctk.CTkButton] = {}
+        for name, label in _NAV:
+            btn = ctk.CTkButton(
+                side, text=f"  {label}", anchor="w", height=38, corner_radius=8,
+                fg_color="transparent", hover_color=t.SURFACE_HOVER, text_color=t.MUTED,
+                font=t.font(13, "bold"), command=getattr(self, f"show_{name}"),
+            )
+            btn.pack(fill="x", padx=10, pady=2)
+            self._nav_buttons[name] = btn
+
+        self.pause_btn = t.secondary_button(side, "Pause", self._toggle_pause)
+        self.pause_btn.pack(side="bottom", fill="x", padx=12, pady=(8, 16))
+        self.pill_discord = _Pill(side, "Discord")
+        self.pill_discord.pack(side="bottom", fill="x", padx=12, pady=(4, 0))
+        self.pill_game = _Pill(side, "Game")
+        self.pill_game.pack(side="bottom", fill="x", padx=12)
 
     def _build_paused_banner(self) -> None:
-        self.paused_banner = ctk.CTkFrame(self, fg_color=t.YELLOW_SOFT, corner_radius=10)
+        self.paused_banner = ctk.CTkFrame(self.home, fg_color=t.YELLOW_SOFT, corner_radius=10)
         inner = ctk.CTkFrame(self.paused_banner, fg_color="transparent")
         inner.pack(fill="x", padx=14, pady=8)
         ctk.CTkLabel(inner, text="●", text_color=t.YELLOW, font=t.font(12)).pack(side="left", padx=(0, 8))
@@ -126,8 +175,8 @@ class App(ctk.CTk):
                       command=self._toggle_pause).pack(side="right")
 
     def _build_card(self) -> None:
-        card = t.card(self)
-        card.grid(row=2, column=0, sticky="nsew", padx=20, pady=(0, 12))
+        card = t.card(self.home)
+        card.grid(row=1, column=0, sticky="ew", padx=20, pady=(20, 12))
         card.grid_columnconfigure(1, weight=1)
         card.grid_rowconfigure(2, weight=1)
 
@@ -153,7 +202,7 @@ class App(ctk.CTk):
 
         self.actions = ctk.CTkFrame(info, fg_color="transparent")
         self.actions.pack(fill="x", pady=(14, 0))
-        self.cover_btn = t.secondary_button(self.actions, "Change cover…", self._open_cover, width=140)
+        self.cover_btn = t.secondary_button(self.actions, "Change cover…", self.show_cover, width=140)
         self.cover_btn.pack(side="left")
         self.vndb_btn = t.secondary_button(self.actions, "VNDB page ↗", self._open_vndb, width=120)
         self.not_vn_btn = t.danger_button(self.actions, "Not a VN", self._blacklist_current, width=90)
@@ -190,8 +239,8 @@ class App(ctk.CTk):
                                            text_color=t.TEXT)
 
     def _build_detection_bar(self) -> None:
-        bar = t.card(self, corner_radius=10)
-        bar.grid(row=3, column=0, sticky="ew", padx=20, pady=(0, 12))
+        bar = t.card(self.home, corner_radius=10)
+        bar.grid(row=2, column=0, sticky="ew", padx=20, pady=(0, 8))
         inner = ctk.CTkFrame(bar, fg_color="transparent")
         inner.pack(fill="x", padx=14, pady=10)
 
@@ -210,18 +259,6 @@ class App(ctk.CTk):
         )
         self.window_menu.set(_PICK_WINDOW)
         self.refresh_btn = t.secondary_button(inner, "↻", self._refresh_windows, width=34, height=30)
-
-    def _build_footer(self) -> None:
-        footer = ctk.CTkFrame(self, fg_color="transparent")
-        footer.grid(row=4, column=0, sticky="ew", padx=20, pady=(0, 18))
-        footer.grid_columnconfigure(3, weight=1)
-
-        self.pause_btn = t.secondary_button(footer, "Pause", self._toggle_pause, width=100)
-        self.pause_btn.grid(row=0, column=0)
-        t.secondary_button(footer, "Library", self._open_library, width=100).grid(row=0, column=1, padx=8)
-        t.secondary_button(footer, "Settings", self._open_settings, width=100).grid(row=0, column=2)
-        self.status_line = t.muted(footer, "", size=11, anchor="e", justify="right")
-        self.status_line.grid(row=0, column=3, sticky="e", padx=(12, 0))
 
     def _on_info_resize(self, event) -> None:
         wrap = max(200, event.width - 8)
@@ -502,30 +539,74 @@ class App(ctk.CTk):
         if vn:
             webbrowser.open(vn.vndb_url)
 
-    def _open_dialog(self, name: str, factory) -> None:
-        """One instance per dialog: re-focus it instead of stacking copies."""
-        dlg = self._dialogs.get(name)
-        try:
-            if dlg is not None and dlg.winfo_exists():
-                dlg.deiconify()
-                dlg.lift()
-                dlg.focus_force()
-                return
-        except Exception:
-            pass
-        self._dialogs[name] = factory()
+    def _show(self, name: str, factory=None) -> ctk.CTkFrame:
+        """Put page ``name`` in the content area. Library, Screenshots and Share are
+        built once and kept (with their filters); ``_TRANSIENT`` pages are built by
+        ``factory`` each time and dropped when left."""
+        old = self._page
+        if old is not None:
+            old.grid_remove()
+            if self._page_name in _TRANSIENT:
+                self._pages.pop(self._page_name, None)
+                old.destroy()
+        page = self._pages.get(name)
+        if page is None:
+            page = factory()
+            self._pages[name] = page
+        page.grid(row=0, column=0, sticky="nsew")
+        self._page, self._page_name = page, name
+        nav = _NAV_OF.get(name, name)
+        for key, btn in self._nav_buttons.items():
+            on = key == nav
+            btn.configure(fg_color=t.ACCENT_SOFT if on else "transparent",
+                          hover_color=t.ACCENT_SOFT if on else t.SURFACE_HOVER,
+                          text_color=t.TEXT if on else t.MUTED)
+        if hasattr(page, "on_show"):
+            page.on_show()
+        return page
 
-    def _open_cover(self) -> None:
+    def _on_key(self, event):
+        handler = getattr(self._page, "on_key", None)
+        return handler(event) if handler else None
+
+    def show_home(self) -> None:
+        self._show("home")
+
+    def show_library(self) -> None:
+        self._show("library", lambda: LibraryPage(self._content, self))
+
+    def show_game(self, key: str) -> None:
+        self._show("game", lambda: GamePage(self._content, self, key))
+
+    def show_screenshots(self, key: str | None = None, select=None, back=None) -> None:
+        """The gallery, for one game (``key``) or all of them; ``back`` returns to
+        where it was opened from (a game's page)."""
+        page = self._show("screenshots", lambda: ScreenshotsPage(self._content, self))
+        page.show_for(key, select, back)
+
+    def show_share(self) -> None:
+        self._show("share", lambda: SharePage(self._content, self))
+
+    def show_settings(self, tab: str | None = None) -> None:
+        self._show("settings", lambda: SettingsPage(self._content, self, tab))
+
+    def show_cover(self) -> None:
         snap = self._last_snapshot
-        if not snap.detected:
-            return
-        self._open_dialog("cover", lambda: CoverDialog(self, self.engine, snap.key, snap.game_name))
+        if snap.detected:
+            self._show("cover", lambda: CoverPage(self._content, self, snap.key, snap.game_name))
 
-    def _open_settings(self, tab: str | None = None) -> None:
-        self._open_dialog("settings", lambda: SettingsDialog(self, self.engine, tab))
-
-    def _open_library(self) -> None:
-        self._open_dialog("library", lambda: LibraryDialog(self, self.engine))
+    def _way_back(self):
+        """Re-opens the page on screen now, once the UI is rebuilt."""
+        name, page = self._page_name, self._page
+        if name == "game":
+            key = page.key
+            return lambda: self.show_game(key)
+        if name == "settings":
+            tab = page.tabs.get()
+            return lambda: self.show_settings(tab)
+        if name in ("library", "screenshots", "share"):
+            return getattr(self, f"show_{name}")
+        return self.show_home
 
     def _toggle_pause(self) -> None:
         self._paused = not self._paused
@@ -542,19 +623,19 @@ class App(ctk.CTk):
         if self._paused:
             self.pause_btn.configure(text="Resume", fg_color=t.ACCENT, hover_color=t.ACCENT_HOVER,
                                      text_color=t.ON_ACCENT, border_width=0)
-            self.paused_banner.grid(row=1, column=0, sticky="ew", padx=20, pady=(0, 12))
+            self.paused_banner.grid(row=0, column=0, sticky="ew", padx=20, pady=(20, 0))
         else:
             self.pause_btn.configure(text="Pause", fg_color=t.SURFACE_ALT, hover_color=t.SURFACE_HOVER,
                                      text_color=t.TEXT, border_width=1)
             self.paused_banner.grid_forget()
 
-    def rebuild_ui(self, reopen_settings: str | None = None) -> None:
+    def rebuild_ui(self) -> None:
         """Re-create every widget in the theme now in the config (Settings → Theme).
-        Open dialogs are closed (Settings reopens on tab ``reopen_settings`` if given);
-        what's being read and the pause state carry over."""
+        Popups are closed; the page on screen, what's being read and the pause state
+        carry over."""
         t.set_custom_theme(self.config_data.get("custom_theme"))
         t.apply_theme(self.config_data.get("theme", t.SYSTEM))
-        self._dialogs.clear()
+        way_back = self._way_back()
         for child in self.winfo_children():
             child.destroy()
         self.configure(fg_color=t.BG)
@@ -563,8 +644,7 @@ class App(ctk.CTk):
         self._build()
         self._sync_pause_widgets()
         self._render_snapshot(self._last_snapshot)
-        if reopen_settings:
-            self._open_settings(reopen_settings)
+        way_back()
 
     def _start_tray(self) -> None:
         try:

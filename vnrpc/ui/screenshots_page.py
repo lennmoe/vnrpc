@@ -5,6 +5,7 @@ import subprocess
 import tkinter as tk
 from pathlib import Path
 from tkinter import messagebox
+from typing import Callable
 
 import customtkinter as ctk
 from PIL import Image, ImageTk
@@ -13,7 +14,7 @@ from .. import screenshots
 from ..core import VNRPCEngine
 from ..winapi import copy_image_to_clipboard
 from . import theme as t
-from .game_dialog import display_name
+from .game_page import display_name
 from .images import ThumbnailLoader
 
 TILE = (200, 112)
@@ -37,13 +38,14 @@ def show_in_folder(path: Path) -> None:
     subprocess.Popen(f'explorer /select,"{path}"')
 
 
-class ScreenshotsDialog(ctk.CTkToplevel):
+class ScreenshotsPage(ctk.CTkFrame):
     """Every screenshot of one VN (or of all of them): a big preview with Copy /
     Open / Show in folder / Delete, and the thumbnails down the side."""
 
-    def __init__(self, master, engine: VNRPCEngine, key: str | None = None, select: Path | None = None) -> None:
-        super().__init__(master)
-        self.engine = engine
+    def __init__(self, master, app) -> None:
+        super().__init__(master, fg_color="transparent")
+        self.app = app
+        self.engine: VNRPCEngine = app.engine
         self._games: list[tuple[str, str, list[Path]]] = []
         self._shots: list[tuple[str, Path]] = []  # (game key, file) in list order
         self._tiles: dict[Path, ctk.CTkFrame] = {}
@@ -55,23 +57,48 @@ class ScreenshotsDialog(ctk.CTkToplevel):
         self._resize_job = None
         self._names: dict[str, str] = {}
         self._menu_keys: dict[str, str | None] = {}
-        self._filter_key = key
+        self._filter_key: str | None = None
+        self._back: Callable[[], None] | None = None
 
-        t.setup_window(self, title="Screenshots", geometry="1040x680", minsize=(760, 500), modal_for=master)
         self._build()
-        self._reload(select=select)
         screenshots.subscribe(self._on_changed)
 
-        for seq, fn in (("<Left>", lambda: self._step(-1)), ("<Up>", lambda: self._step(-1)),
-                        ("<Right>", lambda: self._step(1)), ("<Down>", lambda: self._step(1)),
-                        ("<Control-c>", self._copy), ("<Control-C>", self._copy), ("<Delete>", self._delete),
-                        ("<Return>", self._open), ("<Escape>", self.destroy)):
-            self.bind(seq, lambda _e, fn=fn: fn())
+    def show_for(self, key: str | None = None, select: Path | None = None,
+                 back: Callable[[], None] | None = None) -> None:
+        """Show the screenshots of game ``key`` (all games if None), ``select`` first.
+        ``back``, if given, adds a link back to where the gallery was opened from."""
+        self._filter_key = key
+        self._back = back
+        if back:
+            self.top.pack(fill="x", padx=12, pady=(12, 0), before=self.head)
+        else:
+            self.top.pack_forget()
+        self._index = -1
+        self._reload(select=select)
+
+    def on_key(self, event) -> str | None:
+        if event.type != tk.EventType.KeyPress:
+            return None
+        ctrl = bool(event.state & 0x4)
+        actions = {"Left": lambda: self._step(-1), "Up": lambda: self._step(-1),
+                   "Right": lambda: self._step(1), "Down": lambda: self._step(1),
+                   "Delete": self._delete, "Return": self._open}
+        if ctrl and event.keysym in ("c", "C"):
+            self._copy()
+        elif event.keysym == "Escape" and self._back:
+            self._back()
+        elif not ctrl and event.keysym in actions:
+            actions[event.keysym]()
+        else:
+            return None
+        return "break"
 
     def _build(self) -> None:
-        head = ctk.CTkFrame(self, fg_color="transparent")
+        self.top = ctk.CTkFrame(self, fg_color="transparent")  # packed only with a "back" link
+        t.link_button(self.top, "←  Back", lambda: self._back and self._back()).pack(side="left")
+        head = self.head = ctk.CTkFrame(self, fg_color="transparent")
         head.pack(fill="x", padx=20, pady=(18, 10))
-        ctk.CTkLabel(head, text="Screenshots", font=t.font(20, "bold"), text_color=t.TEXT).pack(side="left")
+        t.page_title(head, "Screenshots").pack(side="left")
         t.secondary_button(head, "Open folder", self._open_folder, width=110, height=30).pack(side="right")
         self.game_menu = t.option_menu(head, [_ALL], command=self._on_menu, width=240,
                                        dynamic_resizing=False)
@@ -100,8 +127,9 @@ class ScreenshotsDialog(ctk.CTkToplevel):
         self.title_lbl.grid(row=0, column=0, sticky="w")
         self.meta_lbl = t.muted(info, "", size=11)
         self.meta_lbl.grid(row=1, column=0, sticky="w")
-        actions = ctk.CTkFrame(info, fg_color="transparent")
-        actions.grid(row=0, column=1, rowspan=2, sticky="e")
+        actions = self._actions = ctk.CTkFrame(info, fg_color="transparent")
+        self._actions_beside: bool | None = None
+        viewer.bind("<Configure>", lambda e: self._place_actions(e.width >= 760))
         self.copy_btn = t.primary_button(actions, "Copy", self._copy, width=86)
         self.copy_btn.pack(side="left")
         self.open_btn = t.secondary_button(actions, "Open", self._open, width=70)
@@ -113,6 +141,16 @@ class ScreenshotsDialog(ctk.CTkToplevel):
 
         self.side = t.scrollable(body, width=TILE[0] + 24)
         self.side.grid(row=0, column=1, sticky="ns")
+
+    def _place_actions(self, beside: bool) -> None:
+        """The buttons sit right of the caption, or under it when the viewer is narrow."""
+        if beside == self._actions_beside:
+            return
+        self._actions_beside = beside
+        if beside:
+            self._actions.grid(row=0, column=1, rowspan=2, sticky="e", pady=0)
+        else:
+            self._actions.grid(row=2, column=0, columnspan=2, sticky="w", pady=(10, 0))
 
     def _on_menu(self, label: str) -> None:
         self._filter_key = self._menu_keys.get(label)
@@ -339,22 +377,14 @@ class ScreenshotsDialog(ctk.CTkToplevel):
         screenshots.notify(key)
 
     def _on_changed(self, _key: str) -> None:
-        if self.winfo_exists():
+        if self.winfo_exists() and self.winfo_ismapped():  # hidden: show_for reloads it
             self._reload()
 
     def destroy(self) -> None:
         screenshots.unsubscribe(self._on_changed)
         if self._loader:
             self._loader.cancel()
-        master = self.master
         super().destroy()
-        # Hand the modal grab back to the window this was opened from (e.g. a game's page).
-        if isinstance(master, ctk.CTkToplevel):
-            try:
-                if master.winfo_exists():
-                    master.grab_set()
-            except tk.TclError:
-                pass
 
 
 def _mtime(path: Path) -> float:

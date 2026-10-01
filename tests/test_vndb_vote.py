@@ -3,7 +3,7 @@ import pytest
 from vnrpc import config as config_mod
 from vnrpc.config import Config
 from vnrpc.core import VNRPCEngine
-from vnrpc.ui.game_dialog import NO_VOTE, vote_label, vote_value
+from vnrpc.ui.game_page import NO_VOTE, vote_label, vote_value
 from vnrpc.vndb import VNDBError
 
 

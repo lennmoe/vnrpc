@@ -17,12 +17,22 @@ from . import theme as t
 from .theme_editor import ThemeTab
 
 
-class SettingsDialog(ctk.CTkToplevel):
-    def __init__(self, master, engine: VNRPCEngine, tab: str | None = None) -> None:
-        super().__init__(master)
-        self.engine = engine
-        self.cfg = engine.config
-        t.setup_window(self, title="Settings", geometry="600x640", minsize=(520, 480), modal_for=master)
+class SettingsPage(ctk.CTkFrame):
+    """Built afresh each time it's shown, so it never saves stale values over changes
+    made meanwhile (e.g. "Not a VN" adding to the blacklist)."""
+
+    def __init__(self, master, app, tab: str | None = None) -> None:
+        super().__init__(master, fg_color="transparent")
+        self.app = app
+        self.engine: VNRPCEngine = app.engine
+        self.cfg = self.engine.config
+        self._listening = False
+
+        head = ctk.CTkFrame(self, fg_color="transparent")
+        head.pack(fill="x", padx=20, pady=(18, 4))
+        t.page_title(head, "Settings").pack(side="left")
+        self.save_btn = t.primary_button(head, "Save", self._save, width=110)
+        self.save_btn.pack(side="right")
 
         tabs = ctk.CTkTabview(
             self, fg_color=t.SURFACE, border_width=1, border_color=t.BORDER, corner_radius=t.RADIUS,
@@ -31,22 +41,15 @@ class SettingsDialog(ctk.CTkToplevel):
             segmented_button_unselected_color=t.SURFACE_ALT,
             segmented_button_unselected_hover_color=t.SURFACE_HOVER, text_color=t.TEXT,
         )
-        tabs.pack(fill="both", expand=True, padx=16, pady=(12, 12))
+        tabs.pack(fill="both", expand=True, padx=16, pady=(0, 16))
         self.tabs = tabs
         self._build_general(tabs.add("General"))
         self.theme_tab = ThemeTab(tabs.add("Theme"), self.cfg)
         self.theme_tab.pack(fill="both", expand=True)
         self._build_rules(tabs.add("Title rules"))
         self._build_blacklist(tabs.add("Blacklist"))
-
-        bar = ctk.CTkFrame(self, fg_color="transparent")
-        bar.pack(fill="x", padx=16, pady=(0, 16))
-        self.save_btn = t.primary_button(bar, "Save", self._save, width=110)
-        self.save_btn.pack(side="right")
-        t.secondary_button(bar, "Close", self.destroy, width=100).pack(side="right", padx=8)
         if tab:
             tabs.set(tab)
-        self.bind("<Escape>", lambda _e: self.destroy())
 
     def _build_general(self, tab) -> None:
         frame = t.scrollable(tab)
@@ -131,9 +134,8 @@ class SettingsDialog(ctk.CTkToplevel):
         row = ctk.CTkFrame(frame, fg_color="transparent")
         row.pack(fill="x", padx=16, pady=4)
         ctk.CTkLabel(row, text="Capture sound", font=t.font(13), text_color=t.TEXT).pack(side="left")
-        if hasattr(self.master, "play_shutter"):
-            t.secondary_button(row, "▶", lambda: self.master.play_shutter(self._volume()), width=34,
-                               height=28).pack(side="right", padx=(8, 0))
+        t.secondary_button(row, "▶", lambda: self.app.play_shutter(self._volume()), width=34,
+                           height=28).pack(side="right", padx=(8, 0))
         self.volume_lbl = t.muted(row, "", width=40, anchor="e")
         self.volume_lbl.pack(side="right")
         self.volume = ctk.CTkSlider(
@@ -202,10 +204,12 @@ class SettingsDialog(ctk.CTkToplevel):
 
     def _listen_hotkey(self) -> None:
         self._show_hotkey(listening=True)
-        self.unbind("<Escape>")  # Esc cancels the capture instead of closing Settings
-        self.bind("<KeyPress>", self._on_hotkey_key)
-        self.bind("<KeyRelease>", self._on_hotkey_key)
-        self.focus_set()
+        self._listening = True
+        self.winfo_toplevel().focus_set()  # out of any text field, so the key isn't typed in it
+
+    def on_key(self, event) -> str | None:
+        """Every key pressed in the window while this page is shown (see App)."""
+        return self._on_hotkey_key(event) if self._listening else None
 
     def _on_hotkey_key(self, event) -> str:
         pressed = event.type == tk.EventType.KeyPress
@@ -227,9 +231,7 @@ class SettingsDialog(ctk.CTkToplevel):
         return "break"
 
     def _stop_listening(self) -> None:
-        self.unbind("<KeyPress>")
-        self.unbind("<KeyRelease>")
-        self.bind("<Escape>", lambda _e: self.destroy())
+        self._listening = False
         self._show_hotkey()
 
     def _path_row(self, parent, label: str, value: str, browse) -> ctk.CTkEntry:
@@ -435,14 +437,12 @@ class SettingsDialog(ctk.CTkToplevel):
         self.cfg["custom_theme"] = custom
         self.cfg.save()
         self.engine.reload_config()
-        if hasattr(self.master, "apply_screenshot_settings"):
-            self.master.apply_screenshot_settings()
+        self.app.apply_screenshot_settings()
         restyle = new_theme != t.current_theme or (new_theme == "custom" and custom != old_custom)
-        if restyle and hasattr(self.master, "rebuild_ui"):
-            # Re-theming rebuilds every window, this one included: reopen it where it was.
-            master, tab = self.master, self.tabs.get()
-            self.destroy()
-            master.after(50, lambda: master.rebuild_ui(reopen_settings=tab))
+        if restyle:
+            # Re-theming rebuilds every widget, this page included: come back to the same tab.
+            app = self.app
+            app.after(50, app.rebuild_ui)
             return
         self.save_btn.configure(text="Saved ✓")
         self.after(1500, lambda: self.save_btn.winfo_exists() and self.save_btn.configure(text="Save"))
