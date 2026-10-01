@@ -9,7 +9,7 @@ from tkinter import filedialog, messagebox
 
 import customtkinter as ctk
 
-from .. import autostart, hotkey, launcher, screenshots
+from .. import __version__, autostart, hotkey, launcher, screenshots, updater
 from ..config import DEFAULTS
 from ..core import VNRPCEngine
 from ..engines import normalize_exe
@@ -181,6 +181,13 @@ class SettingsPage(ctk.CTkFrame):
         )
         if not autostart.supported():
             self.launch_at_startup.configure(state="disabled")
+        self.check_updates = t.switch(
+            frame, "Check for updates at launch", self.cfg["check_updates"],
+            hint=f"Version {__version__}. New GitHub releases are offered when the app starts."
+            if updater.supported() else "Only available in the packaged .exe build.",
+        )
+        if not updater.supported():
+            self.check_updates.configure(state="disabled")
 
         _section(frame, "Advanced")
         self.min_interval = _field(frame, "Min. seconds between presence updates",
@@ -417,6 +424,7 @@ class SettingsPage(ctk.CTkFrame):
         self.cfg["vndb_token"] = self.vndb_token.get().strip()
         self.cfg["vndb_sync"] = bool(self.vndb_sync.get())
         self.cfg["start_minimized"] = bool(self.start_minimized.get())
+        self.cfg["check_updates"] = bool(self.check_updates.get())
         self.cfg["update_min_interval"] = interval
         self.cfg["default_asset_key"] = self.asset_key.get().strip() or DEFAULTS["default_asset_key"]
         self.cfg["title_rules"] = rules

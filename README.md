@@ -48,6 +48,8 @@ Download `VisualNovelRPC.exe` and run it. Nothing else is needed.
 
 Discord desktop must be open, with **Settings → Activity Privacy → Share your detected activities** turned on.
 
+The app checks for a new release each time it starts and offers to update itself (you can turn that off in **Settings → App**).
+
 ## Use your own Discord app (optional)
 
 The app already works out of the box. If you want your own name and default image on Discord:
@@ -73,6 +75,13 @@ python build.py
 ```
 
 The result is `dist\VisualNovelRPC.exe`. Close the app before building.
+
+## Publish a release
+
+1. Bump `__version__` in `vnrpc/__init__.py` (e.g. `1.2.1`) and build.
+2. Create a GitHub release tagged `v1.2.1` (or `1.2.1`) and attach `dist\VisualNovelRPC.exe`.
+
+Copies already installed see the newer tag at their next launch, download the attached .exe and restart on it.
 
 ## Tests
 

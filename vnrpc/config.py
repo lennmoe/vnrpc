@@ -30,6 +30,7 @@ DEFAULTS: dict[str, Any] = {
     "idle_minutes": 0,
     "update_min_interval": 5,
     "start_minimized": False,
+    "check_updates": True,
     "theme": "system",
     "custom_theme": {
         "mode": "dark", "BG": "#111214", "SURFACE": "#1B1C20", "ACCENT": "#5865F2", "TEXT": "#F2F3F5",

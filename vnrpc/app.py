@@ -2,15 +2,17 @@ from __future__ import annotations
 
 import queue
 import sys
+import tempfile
 import threading
 import time
 import webbrowser
+from pathlib import Path
 from tkinter import messagebox
 
 import customtkinter as ctk
 from PIL import Image
 
-from . import screenshots, single_instance
+from . import __version__, screenshots, single_instance, updater
 from .config import Config
 from .core import Snapshot, VNRPCEngine
 from .engines import is_blacklisted
@@ -105,6 +107,8 @@ class App(ctk.CTk):
         threading.Thread(target=self._start_tray, daemon=True).start()
         if self.config_data["start_minimized"]:
             self.after(300, self._hide_to_tray)
+        if updater.supported() and self.config_data["check_updates"]:
+            threading.Thread(target=self._check_update, name="update-check", daemon=True).start()
 
     def _build(self) -> None:
         """The sidebar, and the content area that shows one page at a time."""
@@ -281,6 +285,12 @@ class App(ctk.CTk):
                     self._screenshot_done(*evt[1:])
                 elif evt[0] == "show":
                     self._show_from_tray()
+                elif evt[0] == "update":
+                    self._offer_update(evt[1])
+                elif evt[0] == "update_ready":
+                    self._install_update(evt[1])
+                elif evt[0] == "update_failed":
+                    show_toast(self, "Update failed", evt[1], ok=False, duration_ms=4000)
         except queue.Empty:
             pass
         self.after(150, self._poll_events)
@@ -645,6 +655,48 @@ class App(ctk.CTk):
         self._sync_pause_widgets()
         self._render_snapshot(self._last_snapshot)
         way_back()
+
+    def _check_update(self) -> None:
+        try:
+            release = updater.find_update()
+        except Exception:
+            return  # offline, GitHub rate limit…: try again next launch
+        if release is not None:
+            self._events.put(("update", release))
+
+    def _offer_update(self, release: updater.Release) -> None:
+        notes = release.notes[:600] + ("…" if len(release.notes) > 600 else "")
+        self.deiconify()
+        self.lift()
+        if not messagebox.askyesno(
+            "Update available",
+            f"Visual Novel RPC {release.version} is out (you have {__version__}).\n\n"
+            + (f"{notes}\n\n" if notes else "")
+            + "Download it and restart now?",
+            parent=self,
+        ):
+            return
+        show_toast(self, "Downloading update…", f"Version {release.version}", duration_ms=4000)
+        threading.Thread(target=self._download_update, args=(release,), name="update", daemon=True).start()
+
+    def _download_update(self, release: updater.Release) -> None:
+        try:
+            try:
+                path = updater.download(release, updater.staging_path())
+            except PermissionError:  # the .exe's folder is read-only: stage it in %TEMP%
+                path = updater.download(release, Path(tempfile.gettempdir()) / "VisualNovelRPC.new.exe")
+        except Exception as exc:
+            self._events.put(("update_failed", str(exc) or type(exc).__name__))
+            return
+        self._events.put(("update_ready", path))
+
+    def _install_update(self, path: Path) -> None:
+        try:
+            updater.install(path)
+        except OSError as exc:
+            show_toast(self, "Update failed", str(exc), ok=False, duration_ms=4000)
+            return
+        self._quit()
 
     def _start_tray(self) -> None:
         try:
