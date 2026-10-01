@@ -23,18 +23,16 @@ Windows tray app. It reads the title of the VN's window, so it works with most e
 
 ## Screenshots
 
-<p align="center"><img src="image/main.png" width="560" alt="Main window: the VN being read and a preview of the Discord status"></p>
+<p align="center"><img src="image/main.png" width="680" alt="Main window: the VN being read and a preview of the Discord status"></p>
 
 **Library** — every VN you've read, and a page per VN with its status, VNDB rating, reading history and screenshots.
 
-<p align="center">
-  <img src="image/library.png" width="380" alt="Library">
-  <img src="image/vn-page.png" width="520" alt="A VN's page in the Library">
-</p>
+<p align="center"><img src="image/library.png" width="680" alt="Library"></p>
+<p align="center"><img src="image/vn-page.png" width="820" alt="A VN's page in the Library"></p>
 
 **Screenshots** — press Print Screen in game; browse, copy or delete them in the gallery.
 
-<p align="center"><img src="image/gallery.png" width="720" alt="Screenshot gallery"></p>
+<p align="center"><img src="image/gallery.png" width="820" alt="Screenshot gallery"></p>
 
 **Share your week** — a card to paste on Discord.
 
