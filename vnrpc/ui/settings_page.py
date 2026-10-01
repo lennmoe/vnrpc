@@ -84,6 +84,13 @@ class SettingsPage(ctk.CTkFrame):
         self.show_elapsed = t.switch(frame, "Show elapsed time", self.cfg["show_elapsed"])
         self.clear_on_close = t.switch(frame, "Clear presence when the VN closes", self.cfg["clear_on_close"])
         self.show_vndb_button = t.switch(frame, 'Add a "View on VNDB" button', self.cfg["show_vndb_button"])
+        self.idle_when_unfocused = t.switch(
+            frame, "Go idle when the VN isn't the active window", bool(self.cfg.get("idle_when_unfocused")),
+            hint="Clears your Discord status and stops the elapsed time and the time read "
+                 "until you go back to the game.",
+        )
+        self.idle_seconds = _field(frame, "Seconds in the background before going idle",
+                                   str(self.cfg.get("idle_seconds", DEFAULTS["idle_seconds"])), width=70)
 
         _section(frame, "Covers & matching")
         self.allow_nsfw = t.switch(
@@ -412,6 +419,10 @@ class SettingsPage(ctk.CTkFrame):
             interval = max(1, int(float(self.min_interval.get())))
         except ValueError:
             interval = DEFAULTS["update_min_interval"]
+        try:
+            idle_seconds = max(0, int(float(self.idle_seconds.get())))
+        except ValueError:
+            idle_seconds = DEFAULTS["idle_seconds"]
 
         self.cfg["discord_client_id"] = self.client_id.get().strip() or self.cfg["discord_client_id"]
         self.cfg["show_elapsed"] = bool(self.show_elapsed.get())
@@ -419,6 +430,8 @@ class SettingsPage(ctk.CTkFrame):
         self.cfg["show_total_read"] = bool(self.show_total_read.get())
         self.cfg["clear_on_close"] = bool(self.clear_on_close.get())
         self.cfg["show_vndb_button"] = bool(self.show_vndb_button.get())
+        self.cfg["idle_when_unfocused"] = bool(self.idle_when_unfocused.get())
+        self.cfg["idle_seconds"] = idle_seconds
         self.cfg["allow_nsfw_covers"] = bool(self.allow_nsfw.get())
         self.cfg["use_steam_names"] = bool(self.use_steam_names.get())
         self.cfg["vndb_token"] = self.vndb_token.get().strip()

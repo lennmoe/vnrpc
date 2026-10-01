@@ -318,7 +318,10 @@ class App(ctk.CTk):
             self._render_preview()
             return
 
-        self.state_label.configure(text="NOW READING", text_color=t.ACCENT)
+        if snap.idle:
+            self.state_label.configure(text="IDLE — IN THE BACKGROUND", text_color=t.YELLOW)
+        else:
+            self.state_label.configure(text="NOW READING", text_color=t.ACCENT)
         self.game_label.configure(text=snap.game_name or snap.raw_title)
         bits = [b for b in (snap.engine_name, snap.exe) if b]
         if snap.steam_name:
@@ -360,6 +363,8 @@ class App(ctk.CTk):
             snap = self._last_snapshot
             if self._paused:
                 why = "Presence is paused."
+            elif snap.idle:
+                why = "Idle: the visual novel isn't the active window. Timers resume when you go back to it."
             elif snap.detected:
                 why = "Presence is turned off for this game."
             else:

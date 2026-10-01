@@ -15,12 +15,13 @@ from .engines import blacklist_set, clean_title, normalize_exe
 from .presence import Activity, PresenceManager
 from .title_parser import Rule, build_rules, parse, strip_game_name
 from .vndb import ReleaseCover, VNDBClient, VNDBError, VNResult, push_list_status
-from .winapi import CaptureError, capture_window
+from .winapi import CaptureError, capture_window, foreground_window, window_pid
 from .window_watcher import TargetState, WindowWatcher
 
 _SECTION_TAIL = re.compile(r"\s*[-–—~～:|].*$")
 
 _PLAYTIME_FLUSH_INTERVAL = 60.0
+_IDLE_POLL = 1.0
 
 
 def format_playtime(seconds: int) -> str:
@@ -52,6 +53,7 @@ class Snapshot:
     session_start: int = 0
     hwnd: int = 0
     pid: int = 0
+    idle: bool = False  # the VN has been in the background for a while: nothing shared, timers stopped
 
 
 class VNRPCEngine:
@@ -88,6 +90,13 @@ class VNRPCEngine:
         self._playtime_lock = threading.Lock()
         self._playtime_thread: threading.Thread | None = None
         self._playtime_stop = threading.Event()
+        self._idle_thread: threading.Thread | None = None
+
+        # Idle mode (all under _playtime_lock): when the VN's window lost the focus,
+        # and whether it's been away long enough to count as idle.
+        self._unfocused_since = 0.0
+        self._idle_since = 0.0
+        self._idle = False
 
     def start(self) -> None:
         self._apply_watcher_config()
@@ -96,11 +105,14 @@ class VNRPCEngine:
         self._playtime_stop.clear()
         self._playtime_thread = threading.Thread(target=self._playtime_loop, name="playtime", daemon=True)
         self._playtime_thread.start()
+        self._idle_thread = threading.Thread(target=self._idle_loop, name="idle", daemon=True)
+        self._idle_thread.start()
 
     def stop(self) -> None:
         self._playtime_stop.set()
-        if self._playtime_thread:
-            self._playtime_thread.join(timeout=2)
+        for thread in (self._playtime_thread, self._idle_thread):
+            if thread:
+                thread.join(timeout=2)
         self._flush_playtime()
         self.watcher.stop()
         self.presence.stop()
@@ -158,6 +170,7 @@ class VNRPCEngine:
             with self._playtime_lock:
                 self._flush_playtime_locked()
                 self._playtime_key = ""
+                self._reset_idle_locked()
             return
 
         key = self.config.key_for(target.exe, target.exe_path)
@@ -166,6 +179,7 @@ class VNRPCEngine:
                 self._flush_playtime_locked()
                 self._playtime_key = key
                 self._playtime_tick_start = time.time()
+                self._reset_idle_locked()
             self._current_key = key
             self._session_start = int(time.time())
             self.config.start_session(key)
@@ -239,6 +253,7 @@ class VNRPCEngine:
             session_start=self._session_start,
             hwnd=target.hwnd,
             pid=target.pid,
+            idle=self._idle,
         )
         snap.presence_text = _preview(game_name, info.section_label)
         self._store(snap)
@@ -308,7 +323,7 @@ class VNRPCEngine:
     def activity_for(self, snap: Snapshot) -> Activity | None:
         """Exactly what gets pushed to Discord for ``snap`` (``None`` = nothing).
         The UI's preview renders this too, so the two can't drift apart."""
-        if not snap.detected or snap.privacy == "off":
+        if not snap.detected or snap.privacy == "off" or snap.idle:
             return None
         start = (snap.session_start or None) if self.config["show_elapsed"] else None
         if snap.privacy == "private":
@@ -354,12 +369,14 @@ class VNRPCEngine:
             self._flush_playtime_locked()
 
     def _flush_playtime_locked(self) -> None:
-        if self._paused or not self._playtime_key or self._playtime_tick_start <= 0:
+        if self._paused or self._idle or not self._playtime_key or self._playtime_tick_start <= 0:
             return
-        now = time.time()
-        elapsed = now - self._playtime_tick_start
-        self._playtime_tick_start = now
+        # While the VN is in the background, only count up to when it lost the focus:
+        # if it turns out to be idle, that time was never reading.
+        end = min(time.time(), self._unfocused_since or float("inf"))
+        elapsed = end - self._playtime_tick_start
         if elapsed > 0:
+            self._playtime_tick_start = end
             try:
                 self.config.add_playtime_seconds(self._playtime_key, elapsed)
             except OSError as exc:  # e.g. the game's file is locked by an antivirus or sync tool
@@ -384,6 +401,55 @@ class VNRPCEngine:
                 self._snapshot = new_snap
             self._on_snapshot(new_snap)
             self._push_presence(new_snap)
+
+    def _idle_loop(self) -> None:
+        while not self._playtime_stop.wait(_IDLE_POLL):
+            try:
+                self._check_idle()
+            except Exception:
+                pass
+
+    def _check_idle(self, now: float | None = None) -> None:
+        """Idle mode: once the VN's window has stayed in the background for
+        ``idle_seconds``, Discord is cleared and the elapsed and playtime counters
+        stop; they carry on from where they were when it comes back to the front."""
+        now = time.time() if now is None else now
+        snap = self.snapshot
+        enabled = bool(self.config.get("idle_when_unfocused"))
+        focused = not (enabled and snap.detected) or _has_focus(snap)
+        with self._playtime_lock:
+            if focused:
+                self._unfocused_since = 0.0
+                if not self._idle:
+                    return
+                self._session_start += max(0, int(now - self._idle_since))
+                self._playtime_tick_start = now
+                self._idle = False
+            elif not self._unfocused_since:
+                self._unfocused_since = now
+                return
+            elif self._idle or now - self._unfocused_since < max(0, float(self.config.get("idle_seconds") or 0)):
+                return
+            else:
+                self._flush_playtime_locked()  # up to when the focus was lost
+                self._idle = True
+                self._idle_since = self._unfocused_since
+            idle, start = self._idle, self._session_start
+        with self._lock:
+            if not self._snapshot.detected:
+                return
+            snap = self._snapshot = replace(self._snapshot, idle=idle, session_start=start)
+        self._on_snapshot(snap)
+        self._push_presence(snap)
+
+    def _reset_idle_locked(self) -> None:
+        """Another game (or none): its idle state doesn't carry over."""
+        self._unfocused_since = 0.0
+        self._idle = False
+
+    @property
+    def idle(self) -> bool:
+        return self._idle
 
     def apply_vn_choice(self, key: str, vn: VNResult, *, as_cover: bool = True) -> None:
         """User picked a VN in the cover dialog's VNDB tab."""
@@ -525,6 +591,13 @@ class VNRPCEngine:
 
     def search_vndb(self, query: str, limit: int = 12) -> list[VNResult]:
         return self.vndb.search_vn(query, limit=limit)
+
+
+def _has_focus(snap: Snapshot) -> bool:
+    """The VN's window, or another of its process's (a settings dialog, a
+    backlog window…), is the one in front."""
+    fg = foreground_window()
+    return bool(fg) and (fg == snap.hwnd or (snap.pid and window_pid(fg) == snap.pid))
 
 
 def _engine_by_name(name: str):

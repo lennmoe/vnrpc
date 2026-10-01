@@ -27,7 +27,8 @@ DEFAULTS: dict[str, Any] = {
     "show_section": True,
     "show_total_read": True,
     "clear_on_close": True,
-    "idle_minutes": 0,
+    "idle_when_unfocused": False,
+    "idle_seconds": 60,  # in the background this long = idle
     "update_min_interval": 5,
     "start_minimized": False,
     "check_updates": True,
