@@ -585,6 +585,20 @@ class VNRPCEngine:
         folder = screenshots.folder_for(self.config, snap.key, create=True)
         return screenshots.save(img, folder, game=snap.game_name, section=snap.section_label)
 
+    def wishlist(self) -> list[VNResult]:
+        """The user's VNDB wishlist. Blocking; raises VNDBError."""
+        token = (self.config.get("vndb_token") or "").strip()
+        if not token:
+            raise VNDBError("add your VNDB token in Settings first")
+        return self.vndb.get_wishlist(token)
+
+    def library_vndb_ids(self) -> set[str]:
+        """VNDB ids of the VNs already in the Library."""
+        return {
+            vn_id for entry in self.config.all_games().values()
+            for vn_id in (entry.get("vndb_id"), entry.get("matched_vndb_id")) if vn_id
+        }
+
     def check_vndb_token(self, token: str) -> str:
         """Settings' Test button: the token's username, or a VNDBError saying what's wrong."""
         return self.vndb.list_user(token.strip())["username"]

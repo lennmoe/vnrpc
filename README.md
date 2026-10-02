@@ -14,6 +14,7 @@ Windows tray app. It reads the title of the VN's window, so it works with most e
 - **Covers** from VNDB, an image URL or a local file, with a built-in crop tool.
 - **Steam names**: installed Steam games get their proper name automatically.
 - **Library** of every VN you've played, with time read and a Play button.
+- **Random pick from your VNDB wishlist** when you can't decide what to read next (needs your VNDB token).
 - **Share stats**: a "My week / my month in visual novels" card (covers, time read, VNs finished), copied as an image to paste on Discord.
 - **Japanese locale**: set a VN to start through Locale Emulator or NTLEA, and Play launches it that way.
 - **Screenshots**: press Print Screen while reading to capture the game's window. Each VN gets its own folder, and its page in the Library shows them; the gallery copies, opens or deletes them.

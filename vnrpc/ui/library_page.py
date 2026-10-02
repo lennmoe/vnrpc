@@ -10,6 +10,7 @@ from ..engines import is_blacklisted
 from . import theme as t
 from .game_page import display_name, launch_game, locate_game, remove_game
 from .images import load_image
+from .wishlist_pick import WishlistPickDialog
 
 THUMB = (60, 84)
 _SORTS = ("Most read", "Recent", "A–Z")
@@ -44,6 +45,8 @@ class LibraryPage(ctk.CTkFrame):
         )
         self.status_filter.set(_ALL)
         self.status_filter.pack(side="right")
+        t.secondary_button(tools, "🎲  Random from wishlist", self._random_pick, width=170,
+                           height=30).pack(side="right", padx=(0, 8))
 
         self.summary = t.muted(self, "")
         self.summary.pack(fill="x", padx=20, pady=(0, 8))
@@ -53,6 +56,9 @@ class LibraryPage(ctk.CTkFrame):
 
     def on_show(self) -> None:
         self._reload()
+
+    def _random_pick(self) -> None:
+        WishlistPickDialog(self.winfo_toplevel(), self.engine)
 
     def _reload(self) -> None:
         if not self.winfo_exists():

@@ -17,6 +17,7 @@ _MIN_INTERVAL = 1.1
 
 # Pre-defined VNDB list labels; the website keeps these four mutually exclusive.
 LIST_LABELS = {"playing": 1, "finished": 2, "stalled": 3, "dropped": 4}
+WISHLIST_LABEL = 5
 
 _QUERY_FIELDS = (
     "id,title,alttitle,released,rating,"
@@ -122,14 +123,38 @@ class VNDBClient:
             return resp.json() if resp.content else {}
         raise VNDBError("rate limited, giving up")
 
-    def list_user(self, token: str) -> dict[str, Any]:
-        """``{"id", "username", "permissions"}`` for a token that may edit its owner's list."""
+    def token_user(self, token: str) -> dict[str, Any]:
+        """``{"id", "username", "permissions"}`` of the token's owner."""
         if token not in self._auth_cache:
-            info = self._request("GET", "/authinfo", token=token)
-            if "listwrite" not in (info.get("permissions") or []):
-                raise VNDBError("this token can't edit your list (it needs list write access)")
-            self._auth_cache[token] = info
+            self._auth_cache[token] = self._request("GET", "/authinfo", token=token)
         return self._auth_cache[token]
+
+    def list_user(self, token: str) -> dict[str, Any]:
+        """:meth:`token_user`, for a token that may edit its owner's list."""
+        info = self.token_user(token)
+        if "listwrite" not in (info.get("permissions") or []):
+            raise VNDBError("this token can't edit your list (it needs list write access)")
+        return info
+
+    def get_wishlist(self, token: str) -> list[VNResult]:
+        """Every VN on the token owner's VNDB wishlist. ``length_minutes`` (VNDB's
+        average play time, when known) is in each result's ``_extra``."""
+        user = self.token_user(token)["id"]
+        fields = ",".join(f"vn.{f}" for f in _QUERY_FIELDS.split(",")) + ",vn.length_minutes"
+        out: list[VNResult] = []
+        page = 1
+        while True:
+            body = {"user": user, "filters": ["label", "=", WISHLIST_LABEL], "fields": fields,
+                    "sort": "id", "results": 100, "page": page}
+            data = self._request("POST", "/ulist", body, token=token)
+            for entry in data.get("results") or []:
+                vn = entry.get("vn") or {}
+                result = VNResult.from_api({**vn, "id": entry.get("id", "")})
+                result._extra["length_minutes"] = int(vn.get("length_minutes") or 0)
+                out.append(result)
+            if not data.get("more") or page >= 50:
+                return out
+            page += 1
 
     def get_list_entry(self, token: str, vn_id: str) -> dict[str, Any] | None:
         """The user's list entry for ``vn_id`` (labels, started, finished, vote), if any."""
