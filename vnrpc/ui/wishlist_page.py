@@ -73,7 +73,7 @@ class WishlistPage(ctk.CTkFrame):
 
         btns = ctk.CTkFrame(info, fg_color="transparent")
         btns.pack(side="bottom", fill="x")
-        self.next_btn = t.primary_button(btns, "🎲  Another one", self._next, width=160)
+        self.next_btn = t.primary_button(btns, "Another one", self._next, width=140)
         self.next_btn.pack(side="left")
         self.vndb_btn = t.secondary_button(btns, "VNDB page ↗", self._open, width=120)
         self.vndb_btn.pack(side="left", padx=(8, 0))
@@ -165,7 +165,7 @@ class WishlistPage(ctk.CTkFrame):
             w.destroy()
         chips = [vn.year]
         if vn.rating:
-            chips.append(f"★ {vn.rating / 10:.1f}" if vn.rating > 10 else f"★ {vn.rating:.1f}")
+            chips.append(f"Rating {vn.rating / 10:.1f}" if vn.rating > 10 else f"Rating {vn.rating:.1f}")
         chips.append(length_text(vn._extra.get("length_minutes", 0)))
         for text in filter(None, chips):
             t.chip(self.meta, f" {text} ", fg_color=t.SURFACE_ALT, text_color=t.MUTED).pack(

@@ -44,7 +44,7 @@ class LibraryPage(ctk.CTkFrame):
         )
         self.status_filter.set(_ALL)
         self.status_filter.pack(side="right")
-        t.secondary_button(tools, "🎲  Random from wishlist", app.show_wishlist, width=170,
+        t.secondary_button(tools, "Random from wishlist", app.show_wishlist, width=160,
                            height=30).pack(side="right", padx=(0, 8))
 
         self.summary = t.muted(self, "")
