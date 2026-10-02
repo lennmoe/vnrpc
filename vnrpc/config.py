@@ -36,6 +36,7 @@ DEFAULTS: dict[str, Any] = {
     "mascot_image": "",  # "" = the built-in character
     "mascot_height": 420,  # px
     "mascot_talk": True,  # speech balloons
+    "mascot_on_toast": True,  # the character on the screenshot notice
     "mascot_topmost": False,
     "mascot_pos": None,  # [x, y] once moved
     "theme": "system",

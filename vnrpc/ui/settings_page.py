@@ -203,6 +203,10 @@ class SettingsPage(ctk.CTkFrame):
             hint="A character standing on your desktop who comments on what you read. "
                  "Drag it anywhere, click it, double-click to open the app, right-click for more.",
         )
+        self.mascot_on_toast = t.switch(
+            frame, "Show it on the screenshot notice in the game", bool(self.cfg.get("mascot_on_toast", True)),
+            hint="The character pops up with a \"Screenshot taken!\" bubble. Works even with the mascot hidden.",
+        )
         self.mascot_image = self._path_row(
             frame, "Character image  (a PNG with a transparent background; empty = the built-in one)",
             self.cfg.get("mascot_image") or "", self._browse_mascot)
@@ -529,6 +533,7 @@ class SettingsPage(ctk.CTkFrame):
         self.cfg["mascot_image"] = self.mascot_image.get().strip()
         self.cfg["mascot_height"] = mascot_height
         self.cfg["mascot_talk"] = bool(self.mascot_talk.get())
+        self.cfg["mascot_on_toast"] = bool(self.mascot_on_toast.get())
         self.cfg["mascot_topmost"] = bool(self.mascot_topmost.get())
         self.cfg["update_min_interval"] = interval
         self.cfg["default_asset_key"] = self.asset_key.get().strip() or DEFAULTS["default_asset_key"]
