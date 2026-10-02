@@ -32,6 +32,12 @@ DEFAULTS: dict[str, Any] = {
     "update_min_interval": 5,
     "start_minimized": False,
     "check_updates": True,
+    "mascot_enabled": False,
+    "mascot_image": "",  # "" = the built-in character
+    "mascot_height": 420,  # px
+    "mascot_talk": True,  # speech balloons
+    "mascot_topmost": False,
+    "mascot_pos": None,  # [x, y] once moved
     "theme": "system",
     "custom_theme": {
         "mode": "dark", "BG": "#111214", "SURFACE": "#1B1C20", "ACCENT": "#5865F2", "TEXT": "#F2F3F5",

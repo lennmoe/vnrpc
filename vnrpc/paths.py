@@ -29,6 +29,7 @@ LOG_FILE: Path = APP_DIR / "vnrpc.log"
 
 ASSETS_DIR: Path = _assets_dir()
 APP_ICON_PNG: Path = ASSETS_DIR / "app_icon.png"
+MASCOT_PNG: Path = ASSETS_DIR / "mascot.png"
 APP_ICON_ICO: Path = ASSETS_DIR / "vnrpc.ico"
 SCREENSHOT_SOUND: Path = ASSETS_DIR / "screenshot.mp3"
 

@@ -197,6 +197,25 @@ class SettingsPage(ctk.CTkFrame):
         if not updater.supported():
             self.check_updates.configure(state="disabled")
 
+        _section(frame, "Desktop mascot")
+        self.mascot_enabled = t.switch(
+            frame, "Show a desktop mascot (ukagaka)", bool(self.cfg.get("mascot_enabled")),
+            hint="A character standing on your desktop who comments on what you read. "
+                 "Drag it anywhere, click it, double-click to open the app, right-click for more.",
+        )
+        self.mascot_image = self._path_row(
+            frame, "Character image  (a PNG with a transparent background; empty = the built-in one)",
+            self.cfg.get("mascot_image") or "", self._browse_mascot)
+        self.mascot_height = _field(frame, "Height in pixels", str(self.cfg.get("mascot_height") or 420), width=70)
+        self.mascot_talk = t.switch(frame, "Speech balloons", bool(self.cfg.get("mascot_talk", True)))
+        self.mascot_topmost = t.switch(
+            frame, "Keep it above other windows", bool(self.cfg.get("mascot_topmost")),
+            hint="Off: it stays on the desktop, behind your windows.",
+        )
+        row = ctk.CTkFrame(frame, fg_color="transparent")
+        row.pack(fill="x", padx=16, pady=4)
+        t.secondary_button(row, "Put it back in the corner", self._reset_mascot_pos, width=190).pack(side="left")
+
         _section(frame, "Your data")
         t.muted(
             frame,
@@ -280,6 +299,21 @@ class SettingsPage(ctk.CTkFrame):
         if path:
             ent.delete(0, tk.END)
             ent.insert(0, os.path.normpath(path))
+
+    def _browse_mascot(self, ent: ctk.CTkEntry) -> None:
+        current = ent.get().strip()
+        path = filedialog.askopenfilename(
+            parent=self, title="Character image", filetypes=[("PNG image", "*.png"), ("Images", "*.png *.webp *.gif")],
+            initialdir=os.path.dirname(current) if os.path.isdir(os.path.dirname(current)) else None,
+        )
+        if path:
+            ent.delete(0, tk.END)
+            ent.insert(0, os.path.normpath(path))
+
+    def _reset_mascot_pos(self) -> None:
+        self.cfg["mascot_pos"] = None
+        self.cfg.save()
+        self.app.apply_mascot_settings()
 
     def _browse_shot_dir(self) -> None:
         start = self.shot_dir.get().strip() or str(screenshots.root(self.cfg))
@@ -472,6 +506,10 @@ class SettingsPage(ctk.CTkFrame):
             idle_seconds = max(0, int(float(self.idle_seconds.get())))
         except ValueError:
             idle_seconds = DEFAULTS["idle_seconds"]
+        try:
+            mascot_height = max(80, min(2000, int(float(self.mascot_height.get()))))
+        except ValueError:
+            mascot_height = DEFAULTS["mascot_height"]
 
         self.cfg["discord_client_id"] = self.client_id.get().strip() or self.cfg["discord_client_id"]
         self.cfg["show_elapsed"] = bool(self.show_elapsed.get())
@@ -487,6 +525,11 @@ class SettingsPage(ctk.CTkFrame):
         self.cfg["vndb_sync"] = bool(self.vndb_sync.get())
         self.cfg["start_minimized"] = bool(self.start_minimized.get())
         self.cfg["check_updates"] = bool(self.check_updates.get())
+        self.cfg["mascot_enabled"] = bool(self.mascot_enabled.get())
+        self.cfg["mascot_image"] = self.mascot_image.get().strip()
+        self.cfg["mascot_height"] = mascot_height
+        self.cfg["mascot_talk"] = bool(self.mascot_talk.get())
+        self.cfg["mascot_topmost"] = bool(self.mascot_topmost.get())
         self.cfg["update_min_interval"] = interval
         self.cfg["default_asset_key"] = self.asset_key.get().strip() or DEFAULTS["default_asset_key"]
         self.cfg["title_rules"] = rules
@@ -508,6 +551,7 @@ class SettingsPage(ctk.CTkFrame):
         self.cfg.save()
         self.engine.reload_config()
         self.app.apply_screenshot_settings()
+        self.app.apply_mascot_settings()
         restyle = new_theme != t.current_theme or (new_theme == "custom" and custom != old_custom)
         if restyle:
             # Re-theming rebuilds every widget, this page included: come back to the same tab.

@@ -25,6 +25,7 @@ from .ui.cover_page import CoverPage
 from .ui.game_page import GamePage
 from .ui.images import app_icon_image, fetch_full_image_async, make_ctk_image, tray_image
 from .ui.library_page import LibraryPage
+from .ui.mascot import Mascot
 from .ui.screenshots_page import ScreenshotsPage
 from .ui.settings_page import SettingsPage
 from .ui.share_page import SharePage
@@ -89,6 +90,7 @@ class App(ctk.CTk):
         self._cover_key: tuple | None = ("unset",)
         self._cover_pil: Image.Image | None = None
         self._asset_thumb = app_icon_image(THUMB_SIZE[0], radius=8)
+        self._mascot: Mascot | None = None
 
         self._build()
         self.show_home()
@@ -106,6 +108,7 @@ class App(ctk.CTk):
         self._tray = None
         self._tray_failed = False
         threading.Thread(target=self._start_tray, daemon=True).start()
+        self.apply_mascot_settings()
         if self.config_data["start_minimized"]:
             self.after(300, self._hide_to_tray)
         if updater.supported() and self.config_data["check_updates"]:
@@ -297,7 +300,8 @@ class App(ctk.CTk):
         self.after(150, self._poll_events)
 
     def _render_snapshot(self, snap: Snapshot) -> None:
-        self._last_snapshot = snap
+        old, self._last_snapshot = self._last_snapshot, snap
+        self._mascot_react(old, snap)
         self._hotkey.set_target(snap.pid if snap.detected else 0)
         self._activity = self.engine.activity_for(snap)
         self.section_badge.pack_forget()
@@ -545,6 +549,53 @@ class App(ctk.CTk):
         show_toast(self, "Screenshot saved", where, image=image, area=area)
         self.status_line.configure(text=t.ellipsize(f"Screenshot saved: {path.name}", 70), text_color=t.MUTED)
         screenshots.notify(snap.key)
+        if self._mascot:
+            self._mascot.say("Got it! Screenshot saved.", seconds=3)
+
+    def apply_mascot_settings(self) -> None:
+        """Show, redraw or remove the desktop mascot to match the settings."""
+        if not self.config_data.get("mascot_enabled"):
+            if self._mascot:
+                self._mascot.destroy()
+                self._mascot = None
+            return
+        try:
+            if self._mascot is None:
+                self._mascot = Mascot(self, self.config_data, on_open=self._show_from_tray,
+                                      on_pick=self._mascot_pick, on_hide=self._hide_mascot)
+            else:
+                self._mascot.reload()
+        except Exception as exc:
+            if self._mascot:
+                self._mascot.destroy()
+            self._mascot = None
+            self.status_line.configure(text=t.ellipsize(f"Couldn't show the mascot: {exc}", 70),
+                                       text_color=t.SUBTLE)
+
+    def _mascot_pick(self) -> None:
+        self._show_from_tray()
+        self.after(0, self.show_wishlist)
+
+    def _hide_mascot(self) -> None:
+        self.config_data["mascot_enabled"] = False
+        self.config_data.save()
+        self.apply_mascot_settings()
+
+    def _mascot_react(self, old: Snapshot, new: Snapshot) -> None:
+        """A word from the mascot when something changes in what's being read."""
+        if self._mascot is None:
+            return
+        name = new.game_name or "this one"
+        if new.detected and (not old.detected or old.key != new.key):
+            self._mascot.say(f"Ooh, {name}! Enjoy your reading~")
+        elif old.detected and not new.detected:
+            self._mascot.say("Done for today? Good reading session!")
+        elif new.detected and new.idle and not old.idle:
+            self._mascot.say("Taking a break? I'll pause the timer for you.")
+        elif new.detected and old.idle and not new.idle:
+            self._mascot.say("Welcome back!", seconds=3)
+        elif new.detected and new.section_label and new.section_label != old.section_label:
+            self._mascot.say(f"{new.section_label}... here we go!", seconds=4)
 
     def apply_screenshot_settings(self) -> None:
         """Settings were saved: pick up a new capture key."""
@@ -655,6 +706,9 @@ class App(ctk.CTk):
         t.set_custom_theme(self.config_data.get("custom_theme"))
         t.apply_theme(self.config_data.get("theme", t.SYSTEM))
         way_back = self._way_back()
+        if self._mascot:
+            self._mascot.destroy()
+            self._mascot = None
         for child in self.winfo_children():
             child.destroy()
         self.configure(fg_color=t.BG)
@@ -663,6 +717,7 @@ class App(ctk.CTk):
         self._build()
         self._sync_pause_widgets()
         self._render_snapshot(self._last_snapshot)
+        self.apply_mascot_settings()
         way_back()
 
     def _check_update(self) -> None:
