@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import queue
 import sys
 import tempfile
@@ -50,7 +51,12 @@ _NAV = (
 )
 _NAV_OF = {"game": "library", "wishlist": "library", "cover": "home"}
 # Built again each time they're shown, and dropped when another page is.
-_TRANSIENT = {"game", "cover", "settings"}
+_TRANSIENT = {"cover"}
+# Shortly after startup these pages are built in the background, one at a time,
+# so even the first click on them is instant.
+_PREBUILD = ("library", "screenshots", "share", "settings")
+_PREBUILD_AFTER_MS = 1500
+_PREBUILD_GAP_MS = 250
 
 
 class App(ctk.CTk):
@@ -113,6 +119,7 @@ class App(ctk.CTk):
         self.apply_mascot_settings()
         if self.config_data["start_minimized"]:
             self.after(300, self._hide_to_tray)
+        self.after(_PREBUILD_AFTER_MS, self._prebuild_pages)
         if updater.supported() and self.config_data["check_updates"]:
             threading.Thread(target=self._check_update, name="update-check", daemon=True).start()
 
@@ -627,18 +634,21 @@ class App(ctk.CTk):
     def _show(self, name: str, factory=None) -> ctk.CTkFrame:
         """Put page ``name`` in the content area. Library, Screenshots and Share are
         built once and kept (with their filters); ``_TRANSIENT`` pages are built by
-        ``factory`` each time and dropped when left."""
+        ``factory`` each time and dropped when left.
+        Kept pages stay stacked in the content area and the one shown is raised on
+        top: taking a page out and putting it back would make every CustomTkinter
+        widget on it draw itself again, which is what made switching pages slow."""
         old = self._page
-        if old is not None:
-            old.grid_remove()
-            if self._page_name in _TRANSIENT:
-                self._pages.pop(self._page_name, None)
-                old.destroy()
+        if old is not None and self._page_name in _TRANSIENT:
+            self._pages.pop(self._page_name, None)
+            old.destroy()
         page = self._pages.get(name)
         if page is None:
             page = factory()
             self._pages[name] = page
-        page.grid(row=0, column=0, sticky="nsew")
+        if not page.winfo_manager():
+            page.grid(row=0, column=0, sticky="nsew")
+        page.tkraise()
         self._page, self._page_name = page, name
         nav = _NAV_OF.get(name, name)
         for key, btn in self._nav_buttons.items():
@@ -649,6 +659,49 @@ class App(ctk.CTk):
         if hasattr(page, "on_show"):
             page.on_show()
         return page
+
+    def _prebuild_pages(self, todo: tuple[str, ...] = _PREBUILD) -> None:
+        """Build the next page of ``todo`` under the one on screen, then the rest later."""
+        while todo and todo[0] in self._pages:
+            todo = todo[1:]
+        if not todo:
+            self._prebuild_recent_game()
+            return
+        name, factories = todo[0], {
+            "library": lambda: LibraryPage(self._content, self),
+            "screenshots": lambda: ScreenshotsPage(self._content, self),
+            "share": lambda: SharePage(self._content, self),
+            "settings": lambda: SettingsPage(self._content, self),
+        }
+        try:
+            page = self._pages[name] = factories[name]()
+            if name == "settings":
+                page.built_from = copy.deepcopy(self.config_data.data)
+            page.grid(row=0, column=0, sticky="nsew")
+            if name == "screenshots":
+                page.show_for(None)
+            elif hasattr(page, "on_show"):
+                page.on_show()  # fills it (the Library's cards…)
+            if self._page is not None:
+                self._page.tkraise()
+        except Exception:
+            self._pages.pop(name, None)
+        self.after(_PREBUILD_GAP_MS, lambda: self._prebuild_pages(todo[1:]))
+
+    def _prebuild_recent_game(self) -> None:
+        """The page of the VN read last: the one most likely to be opened."""
+        games = self.engine.config.all_games()
+        if not games or "game" in self._pages:
+            return
+        key = max(games, key=lambda k: int(games[k].get("last_played") or 0))
+        try:
+            page = self._pages["game"] = GamePage(self._content, self, key)
+            page.built_from = self.engine.config.game_override(key)
+            page.grid(row=0, column=0, sticky="nsew")
+            if self._page is not None:
+                self._page.tkraise()
+        except Exception:
+            self._pages.pop("game", None)
 
     def _on_key(self, event):
         handler = getattr(self._page, "on_key", None)
@@ -661,7 +714,17 @@ class App(ctk.CTk):
         self._show("library", lambda: LibraryPage(self._content, self))
 
     def show_game(self, key: str) -> None:
-        self._show("game", lambda: GamePage(self._content, self, key))
+        """A game's page is kept while it's the same game with the same data, so
+        going back and forth from the Library doesn't build it again."""
+        entry = self.engine.config.game_override(key)
+        page = self._pages.get("game")
+        if page is not None and (page.key != key or getattr(page, "built_from", None) != entry):
+            if self._page is page:
+                self._page = None
+            self._pages.pop("game")
+            page.destroy()
+        page = self._show("game", lambda: GamePage(self._content, self, key))
+        page.built_from = entry
 
     def show_screenshots(self, key: str | None = None, select=None, back=None) -> None:
         """The gallery, for one game (``key``) or all of them; ``back`` returns to
@@ -676,7 +739,20 @@ class App(ctk.CTk):
         self._show("share", lambda: SharePage(self._content, self))
 
     def show_settings(self, tab: str | None = None) -> None:
-        self._show("settings", lambda: SettingsPage(self._content, self, tab))
+        page = self._pages.get("settings")
+        if page is not None and getattr(page, "built_from", None) != self.config_data.data:
+            if self._page is page:
+                self._page = None
+            self._pages.pop("settings")
+            page.destroy()
+            page = None
+        fresh = page is None
+        page = self._show("settings", lambda: SettingsPage(self._content, self, tab))
+        if fresh:
+            page.built_from = copy.deepcopy(self.config_data.data)
+        elif tab:
+            page.tabs.set(tab)
+            page._build_tab()
 
     def show_cover(self) -> None:
         snap = self._last_snapshot

@@ -47,6 +47,7 @@ class ScreenshotsPage(ctk.CTkFrame):
         self.app = app
         self.engine: VNRPCEngine = app.engine
         self._games: list[tuple[str, str, list[Path]]] = []
+        self._loaded = False
         self._shots: list[tuple[str, Path]] = []  # (game key, file) in list order
         self._tiles: dict[Path, ctk.CTkFrame] = {}
         self._shown = 0
@@ -67,12 +68,15 @@ class ScreenshotsPage(ctk.CTkFrame):
                  back: Callable[[], None] | None = None) -> None:
         """Show the screenshots of game ``key`` (all games if None), ``select`` first.
         ``back``, if given, adds a link back to where the gallery was opened from."""
-        self._filter_key = key
-        self._back = back
         if back:
             self.top.pack(fill="x", padx=12, pady=(12, 0), before=self.head)
         else:
             self.top.pack_forget()
+        self._back = back
+        if (self._loaded and key == self._filter_key and select is None
+                and games_with_shots(self.engine) == self._games):
+            return  # same gallery as last time, files unchanged: keep it as it is
+        self._filter_key = key
         self._index = -1
         self._reload(select=select)
 
@@ -160,6 +164,7 @@ class ScreenshotsPage(ctk.CTkFrame):
         """Re-read the folders, keeping the selection unless ``select`` is given."""
         current = self._shots[self._index][1] if 0 <= self._index < len(self._shots) else None
         self._games = games_with_shots(self.engine)
+        self._loaded = True
         self._names = {key: name for key, name, _ in self._games}
         self._menu_keys = {_ALL: None}
         for key, name, shots in self._games:

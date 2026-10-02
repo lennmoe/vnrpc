@@ -125,9 +125,15 @@ class GamePage(ctk.CTkFrame):
         self._build_status(self._left, entry)
         self._build_launch(self._left, entry)
         self._build_stats(self._right, entry)
-        self._build_chart(self._right, entry)
-        self._build_screenshots(body)
         self._build_footer(entry)
+        # The chart and the screenshots come right after the page is first drawn,
+        # so it shows up about twice as fast.
+        self.after(1, lambda: self._build_rest(body, entry))
+
+    def _build_rest(self, body, entry: dict) -> None:
+        if self.winfo_exists():
+            self._build_chart(self._right, entry)
+            self._build_screenshots(body)
 
     def _layout(self, wide: bool) -> None:
         if wide == self._wide:

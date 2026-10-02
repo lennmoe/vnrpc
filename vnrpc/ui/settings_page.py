@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 import os
 import re
@@ -19,8 +20,9 @@ from .theme_editor import ThemeTab
 
 
 class SettingsPage(ctk.CTkFrame):
-    """Built afresh each time it's shown, so it never saves stale values over changes
-    made meanwhile (e.g. "Not a VN" adding to the blacklist)."""
+    """Kept between visits only while the settings are the ones it was built from
+    (``built_from``); any change made meanwhile (e.g. "Not a VN" adding to the
+    blacklist) gets it built afresh, so it never saves stale values."""
 
     def __init__(self, master, app, tab: str | None = None) -> None:
         super().__init__(master, fg_color="transparent")
@@ -41,16 +43,33 @@ class SettingsPage(ctk.CTkFrame):
             segmented_button_selected_hover_color=t.SELECTED_HOVER,
             segmented_button_unselected_color=t.SURFACE_ALT,
             segmented_button_unselected_hover_color=t.SURFACE_HOVER, text_color=t.TEXT,
+            command=self._build_tab,
         )
         tabs.pack(fill="both", expand=True, padx=16, pady=(0, 16))
         self.tabs = tabs
+        # Only General is built up front: the other tabs are filled the first time
+        # they're opened, so the page shows up quicker. Until then they're None.
+        self.theme_tab: ThemeTab | None = None
+        self.rules_text: ctk.CTkTextbox | None = None
+        self.blacklist_text: ctk.CTkTextbox | None = None
+        self._unbuilt = {"Theme": self._build_theme, "Title rules": self._build_rules,
+                         "Blacklist": self._build_blacklist}
         self._build_general(tabs.add("General"))
-        self.theme_tab = ThemeTab(tabs.add("Theme"), self.cfg)
-        self.theme_tab.pack(fill="both", expand=True)
-        self._build_rules(tabs.add("Title rules"))
-        self._build_blacklist(tabs.add("Blacklist"))
+        for name in self._unbuilt:
+            tabs.add(name)
         if tab:
             tabs.set(tab)
+            self._build_tab()
+
+    def _build_tab(self) -> None:
+        name = self.tabs.get()
+        build = self._unbuilt.pop(name, None)
+        if build:
+            build(self.tabs.tab(name))
+
+    def _build_theme(self, frame) -> None:
+        self.theme_tab = ThemeTab(frame, self.cfg)
+        self.theme_tab.pack(fill="both", expand=True)
 
     def _build_general(self, tab) -> None:
         frame = t.scrollable(tab)
@@ -493,12 +512,12 @@ class SettingsPage(ctk.CTkFrame):
 
     def _save(self) -> None:
         try:
-            rules = self._parse_rules()
+            rules = self._parse_rules() if self.rules_text else list(self.cfg.get("title_rules") or [])
         except ValueError as exc:
             messagebox.showerror("Title rules", str(exc), parent=self)
             return
         try:
-            custom = self.theme_tab.custom_value()
+            custom = self.theme_tab.custom_value() if self.theme_tab else self.cfg.get("custom_theme")
         except ValueError as exc:
             messagebox.showerror("Custom theme", str(exc), parent=self)
             return
@@ -538,7 +557,8 @@ class SettingsPage(ctk.CTkFrame):
         self.cfg["update_min_interval"] = interval
         self.cfg["default_asset_key"] = self.asset_key.get().strip() or DEFAULTS["default_asset_key"]
         self.cfg["title_rules"] = rules
-        self.cfg["blacklist_exe"] = self._parse_blacklist()
+        if self.blacklist_text:
+            self.cfg["blacklist_exe"] = self._parse_blacklist()
         self.cfg["screenshot_hotkey"] = self._hotkey_value
         self.cfg["screenshot_dir"] = self.shot_dir.get().strip()
         self.cfg["screenshot_volume"] = self._volume()
@@ -549,7 +569,7 @@ class SettingsPage(ctk.CTkFrame):
                 autostart.set_enabled(bool(self.launch_at_startup.get()))
             except OSError as exc:
                 messagebox.showwarning("Startup", f"Couldn't change the startup setting: {exc}", parent=self)
-        new_theme = self.theme_tab.theme_name()
+        new_theme = self.theme_tab.theme_name() if self.theme_tab else self.cfg.get("theme", t.SYSTEM)
         old_custom = self.cfg.get("custom_theme")
         self.cfg["theme"] = new_theme
         self.cfg["custom_theme"] = custom
@@ -557,6 +577,7 @@ class SettingsPage(ctk.CTkFrame):
         self.engine.reload_config()
         self.app.apply_screenshot_settings()
         self.app.apply_mascot_settings()
+        self.built_from = copy.deepcopy(self.cfg.data)  # what's on the page is what's saved
         restyle = new_theme != t.current_theme or (new_theme == "custom" and custom != old_custom)
         if restyle:
             # Re-theming rebuilds every widget, this page included: come back to the same tab.
