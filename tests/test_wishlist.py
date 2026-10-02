@@ -1,6 +1,6 @@
 import random
 
-from vnrpc.ui.wishlist_pick import length_text, pick_order
+from vnrpc.ui.wishlist_page import length_text, pick_order
 from vnrpc.vndb import WISHLIST_LABEL, VNDBClient, VNResult
 
 

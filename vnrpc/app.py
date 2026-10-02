@@ -29,6 +29,7 @@ from .ui.screenshots_page import ScreenshotsPage
 from .ui.settings_page import SettingsPage
 from .ui.share_page import SharePage
 from .ui.toast import show_toast
+from .ui.wishlist_page import WishlistPage
 from .winapi import CaptureError, client_rect_on_screen
 
 COVER_SIZE = (150, 212)
@@ -45,7 +46,7 @@ _NAV = (
     ("share", "Share"),
     ("settings", "Settings"),
 )
-_NAV_OF = {"game": "library", "cover": "home"}
+_NAV_OF = {"game": "library", "wishlist": "library", "cover": "home"}
 # Built again each time they're shown, and dropped when another page is.
 _TRANSIENT = {"game", "cover", "settings"}
 
@@ -599,6 +600,9 @@ class App(ctk.CTk):
         page = self._show("screenshots", lambda: ScreenshotsPage(self._content, self))
         page.show_for(key, select, back)
 
+    def show_wishlist(self) -> None:
+        self._show("wishlist", lambda: WishlistPage(self._content, self))
+
     def show_share(self) -> None:
         self._show("share", lambda: SharePage(self._content, self))
 
@@ -619,7 +623,7 @@ class App(ctk.CTk):
         if name == "settings":
             tab = page.tabs.get()
             return lambda: self.show_settings(tab)
-        if name in ("library", "screenshots", "share"):
+        if name in ("library", "screenshots", "share", "wishlist"):
             return getattr(self, f"show_{name}")
         return self.show_home
 
