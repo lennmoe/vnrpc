@@ -674,14 +674,12 @@ class App(ctk.CTk):
             self._events.put(("update", release))
 
     def _offer_update(self, release: updater.Release) -> None:
-        notes = release.notes[:600] + ("…" if len(release.notes) > 600 else "")
         self.deiconify()
         self.lift()
         if not messagebox.askyesno(
             "Update available",
             f"Visual Novel RPC {release.version} is out (you have {__version__}).\n\n"
-            + (f"{notes}\n\n" if notes else "")
-            + "Download it and restart now?",
+            "Download it and restart now?",
             parent=self,
         ):
             return
