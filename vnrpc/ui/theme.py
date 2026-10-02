@@ -318,6 +318,44 @@ class SmoothScrollableFrame(ctk.CTkScrollableFrame):
         super().__init__(*args, **kw)
         self._scroll_target = 0.0
         self._scroll_job = None
+        # CTk recomputes the scroll region and redraws its scrollbar (a costly canvas
+        # drawing) on every resize of the content: dozens of times while a page is
+        # being built. Do each once, when Tk is idle.
+        self._region_job = None
+        self._bar_job = None
+        self._bar_value: tuple[str, str] | None = None
+        self._bar_drawn: tuple[str, str] | None = None
+        if self._orientation == "vertical":
+            self.bind("<Configure>", self._queue_region)
+            self._parent_canvas.configure(yscrollcommand=self._queue_bar)
+
+    def _queue_region(self, _event=None) -> None:
+        if self._region_job is None:
+            self._region_job = self.after_idle(self._update_region)
+
+    def _update_region(self) -> None:
+        self._region_job = None
+        self._parent_canvas.configure(scrollregion=self._parent_canvas.bbox("all"))
+
+    def _queue_bar(self, first: str, last: str) -> None:
+        self._bar_value = (first, last)
+        if self._bar_job is None:
+            self._bar_job = self.after_idle(self._update_bar)
+
+    def _update_bar(self) -> None:
+        self._bar_job = None
+        if self._bar_value != self._bar_drawn:
+            self._bar_drawn = self._bar_value
+            self._scrollbar.set(*self._bar_value)
+
+    def destroy(self) -> None:
+        for job in (self._region_job, self._bar_job, self._scroll_job):
+            if job is not None:
+                try:
+                    self.after_cancel(job)
+                except Exception:
+                    pass
+        super().destroy()
 
     def _mouse_wheel_all(self, event):
         if (not sys.platform.startswith("win") or self._shift_pressed
