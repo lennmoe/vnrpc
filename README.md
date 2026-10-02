@@ -20,7 +20,7 @@ Windows tray app. It reads the title of the VN's window, so it works with most e
 - **Screenshots**: press Print Screen while reading to capture the game's window. Each VN gets its own folder, and its page in the Library shows them; the gallery copies, opens or deletes them.
 - **Idle mode** (optional): when the VN stays in the background, your Discord status clears and the timers stop until you go back to it.
 - **Export / import your data** (settings, Library, time read, custom covers) as one file, e.g. to move to another PC.
-- **Desktop mascot** (optional, ukagaka style): a character on your desktop that comments on what you read. Use the built-in one or your own transparent PNG. It also pops up with a "Screenshot taken!" bubble when you take a screenshot in the game.
+- **Desktop mascot** (optional, ukagaka style): a character on your desktop that comments on what you read. Use the built-in one or your own transparent PNG.
 - **Privacy per game**: Full, Partial (no chapter), Private (just "Visual Novel") or Off.
 - NSFW covers are blurred and never sent to Discord unless you allow it.
 - Optional **launch at Windows startup**.

@@ -26,7 +26,7 @@ from .ui.cover_page import CoverPage
 from .ui.game_page import GamePage
 from .ui.images import app_icon_image, fetch_full_image_async, make_ctk_image, tray_image
 from .ui.library_page import LibraryPage
-from .ui.mascot import Mascot, load_character
+from .ui.mascot import Mascot
 from .ui.screenshots_page import ScreenshotsPage
 from .ui.settings_page import SettingsPage
 from .ui.share_page import SharePage
@@ -37,7 +37,6 @@ from .winapi import CaptureError, client_rect_on_screen
 COVER_SIZE = (150, 212)
 THUMB_SIZE = (76, 76)
 TOAST_THUMB = (96, 54)
-TOAST_SPRITE_H = 170
 SIDEBAR_W = 210
 _NO_WINDOWS = "(no windows found)"
 _PICK_WINDOW = "Pick the game window…"
@@ -98,7 +97,6 @@ class App(ctk.CTk):
         self._cover_pil: Image.Image | None = None
         self._asset_thumb = app_icon_image(THUMB_SIZE[0], radius=8)
         self._mascot: Mascot | None = None
-        self._sprite_cache: tuple = (None, None)
 
         self._build()
         self.show_home()
@@ -549,33 +547,17 @@ class App(ctk.CTk):
 
     def _screenshot_done(self, snap: Snapshot, path, thumb, error: str) -> None:
         area = client_rect_on_screen(snap.hwnd) if snap.hwnd else None
-        sprite = self._toast_sprite()
         if path is None:
-            show_toast(self, "Oops, the screenshot failed" if sprite else "Screenshot failed", error, ok=False,
-                       area=area, sprite=sprite)
+            show_toast(self, "Screenshot failed", error, ok=False, area=area)
             self.status_line.configure(text=t.ellipsize(f"Screenshot failed: {error}", 70), text_color=t.SUBTLE)
             return
         image = ctk.CTkImage(light_image=thumb, dark_image=thumb, size=TOAST_THUMB) if thumb else None
         where = "  ·  ".join(b for b in (snap.game_name, snap.section_label) if b)
-        show_toast(self, "Screenshot taken!" if sprite else "Screenshot saved", where, image=image, area=area,
-                   sprite=sprite)
+        show_toast(self, "Screenshot saved", where, image=image, area=area)
         self.status_line.configure(text=t.ellipsize(f"Screenshot saved: {path.name}", 70), text_color=t.MUTED)
         screenshots.notify(snap.key)
-        if self._mascot and not sprite:
+        if self._mascot:
             self._mascot.say("Got it! Screenshot saved.", seconds=3)
-
-    def _toast_sprite(self):
-        """The character shown on the screenshot notice, or None when that's off."""
-        if not self.config_data.get("mascot_on_toast", True):
-            return None
-        key = (self.config_data.get("mascot_image") or "", TOAST_SPRITE_H)
-        if self._sprite_cache[0] != key:
-            try:
-                img = load_character(key[0], TOAST_SPRITE_H)
-            except OSError:
-                img = None
-            self._sprite_cache = (key, img)
-        return self._sprite_cache[1]
 
     def apply_mascot_settings(self) -> None:
         """Show, redraw or remove the desktop mascot to match the settings."""

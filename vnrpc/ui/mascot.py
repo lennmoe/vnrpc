@@ -99,41 +99,6 @@ def premultiplied_bgra(img: Image.Image) -> bytes:
     return Image.merge("RGBA", tuple(ImageChops.multiply(c, a) for c in (b, g, r)) + (a,)).tobytes()
 
 
-def make_layered(win: tk.Toplevel, extra_style: int = 0) -> int:
-    """Turn a (shown, borderless) Toplevel into a layered window; returns its hwnd."""
-    win.update_idletasks()
-    hwnd = user32.GetParent(win.winfo_id()) or win.winfo_id()
-    style = user32.GetWindowLongW(hwnd, GWL_EXSTYLE) | WS_EX_LAYERED | WS_EX_TOOLWINDOW | extra_style
-    user32.SetWindowLongW(hwnd, GWL_EXSTYLE, style)
-    return hwnd
-
-
-def paint_layered(hwnd: int, img: Image.Image, pos: tuple[int, int], alpha: int = 255,
-                  data: bytes | None = None) -> None:
-    """Show ``img`` (RGBA) as the whole content of layered window ``hwnd`` at
-    ``pos``, faded to ``alpha``. ``data``: its :func:`premultiplied_bgra`, if
-    already computed (fading repaints the same image)."""
-    w, h = img.size
-    header = BITMAPINFOHEADER(ctypes.sizeof(BITMAPINFOHEADER), w, -h, 1, 32, 0, 0, 0, 0, 0, 0)
-    screen = user32.GetDC(None)
-    mem = gdi32.CreateCompatibleDC(screen)
-    bits = ctypes.c_void_p()
-    bmp = gdi32.CreateDIBSection(mem, ctypes.byref(header), 0, ctypes.byref(bits), None, 0)
-    try:
-        data = data or premultiplied_bgra(img)
-        ctypes.memmove(bits, data, len(data))
-        old = gdi32.SelectObject(mem, bmp)
-        blend = BLENDFUNCTION(0, 0, max(0, min(255, int(alpha))), AC_SRC_ALPHA)
-        user32.UpdateLayeredWindow(hwnd, screen, ctypes.byref(wintypes.POINT(*pos)),
-                                   ctypes.byref(wintypes.SIZE(w, h)), mem, ctypes.byref(wintypes.POINT(0, 0)),
-                                   0, ctypes.byref(blend), ULW_ALPHA)
-        gdi32.SelectObject(mem, old)
-    finally:
-        gdi32.DeleteObject(bmp)
-        gdi32.DeleteDC(mem)
-        user32.ReleaseDC(None, screen)
-
-
 def work_area() -> tuple[int, int, int, int]:
     rect = wintypes.RECT()
     user32.SystemParametersInfoW(SPI_GETWORKAREA, 0, ctypes.byref(rect), 0)
@@ -196,14 +161,36 @@ class Mascot:
         self._pos = clamp_position(self.config.get("mascot_pos"), size) or default_position(size)
         self.win.geometry(f"{size[0]}x{size[1]}+{self._pos[0]}+{self._pos[1]}")
         self.win.deiconify()
-        self._hwnd = make_layered(self.win)
+        self.win.update_idletasks()
+        self._hwnd = user32.GetParent(self.win.winfo_id()) or self.win.winfo_id()
+        style = user32.GetWindowLongW(self._hwnd, GWL_EXSTYLE) | WS_EX_LAYERED | WS_EX_TOOLWINDOW
+        user32.SetWindowLongW(self._hwnd, GWL_EXSTYLE, style)
         topmost = bool(self.config.get("mascot_topmost"))
         self.win.attributes("-topmost", topmost)
         self._balloon.set_topmost(topmost)
         self._paint()
 
     def _paint(self) -> None:
-        paint_layered(self._hwnd, self._img, self._pos)
+        img = self._img
+        w, h = img.size
+        header = BITMAPINFOHEADER(ctypes.sizeof(BITMAPINFOHEADER), w, -h, 1, 32, 0, 0, 0, 0, 0, 0)
+        screen = user32.GetDC(None)
+        mem = gdi32.CreateCompatibleDC(screen)
+        bits = ctypes.c_void_p()
+        bmp = gdi32.CreateDIBSection(mem, ctypes.byref(header), 0, ctypes.byref(bits), None, 0)
+        try:
+            data = premultiplied_bgra(img)
+            ctypes.memmove(bits, data, len(data))
+            old = gdi32.SelectObject(mem, bmp)
+            blend = BLENDFUNCTION(0, 0, 255, AC_SRC_ALPHA)
+            user32.UpdateLayeredWindow(self._hwnd, screen, ctypes.byref(wintypes.POINT(*self._pos)),
+                                       ctypes.byref(wintypes.SIZE(w, h)), mem, ctypes.byref(wintypes.POINT(0, 0)),
+                                       0, ctypes.byref(blend), ULW_ALPHA)
+            gdi32.SelectObject(mem, old)
+        finally:
+            gdi32.DeleteObject(bmp)
+            gdi32.DeleteDC(mem)
+            user32.ReleaseDC(None, screen)
 
     # -- talking ---------------------------------------------------------------
     def say(self, text: str, seconds: float = 6) -> None:
