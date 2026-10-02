@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import os
 import threading
 from collections import OrderedDict
 from typing import Callable
@@ -21,18 +22,34 @@ _HEADERS = {"User-Agent": "VisualNovelRPC/1.0"}
 _WEB_CACHE_MAX = 64
 _web_cache: "OrderedDict[str, Image.Image]" = OrderedDict()
 _web_lock = threading.Lock()
+# Local covers made into CTkImages, by (path, modified time, size, blur, radius):
+# pages show the same few covers again and again.
+_LOCAL_CACHE_MAX = 256
+_local_cache: "OrderedDict[tuple, ctk.CTkImage]" = OrderedDict()
 
 
 def load_image(
     path_or_none: str | None, size: tuple[int, int], *, blur: bool = False, radius: int = 0
 ) -> "ctk.CTkImage":
-    img = None
-    if path_or_none:
-        try:
-            img = Image.open(path_or_none).convert("RGB")
-        except Exception:
-            img = None
-    return make_ctk_image(img, size, blur=blur, radius=radius)
+    if not path_or_none:
+        return make_ctk_image(None, size, blur=blur, radius=radius)
+    try:
+        key = (path_or_none, os.path.getmtime(path_or_none), tuple(size), blur, radius)
+    except OSError:
+        return make_ctk_image(None, size, blur=blur, radius=radius)
+    cached = _local_cache.get(key)
+    if cached is not None:
+        _local_cache.move_to_end(key)
+        return cached
+    try:
+        with Image.open(path_or_none) as im:
+            img = im.convert("RGB")
+    except Exception:
+        return make_ctk_image(None, size, blur=blur, radius=radius)
+    made = _local_cache[key] = make_ctk_image(img, size, blur=blur, radius=radius)
+    while len(_local_cache) > _LOCAL_CACHE_MAX:
+        _local_cache.popitem(last=False)
+    return made
 
 
 def make_ctk_image(

@@ -52,15 +52,17 @@ class LibraryPage(ctk.CTkFrame):
 
         self.list_box = t.scrollable(self)
         self.list_box.pack(fill="both", expand=True, padx=12, pady=(0, 14))
+        # What's on screen: the keys in order, and per key what its card was built
+        # from and the widgets that change while a VN is read (time, progress).
+        self._shown: list[str] | None = None
+        self._cards: dict[str, tuple[tuple, ctk.CTkLabel, ctk.CTkProgressBar]] = {}
 
     def on_show(self) -> None:
         self._reload()
+
     def _reload(self) -> None:
         if not self.winfo_exists():
             return
-        for w in self.list_box.winfo_children():
-            w.destroy()
-
         blacklist = self.engine.blacklist
         games = {
             key: entry for key, entry in self.engine.config.all_games().items()
@@ -90,15 +92,36 @@ class LibraryPage(ctk.CTkFrame):
         else:
             entries.sort(key=lambda kv: int(kv[1].get("playtime_seconds", 0)), reverse=True)
 
+        top = max(1, max((int(e.get("playtime_seconds", 0)) for _, e in entries), default=0))
+        if self._refresh_in_place(entries, top):
+            return
+        for w in self.list_box.winfo_children():
+            w.destroy()
+        self._cards.clear()
+        self._shown = [key for key, _ in entries]
         if not entries:
             msg = ("No match." if needle or wanted_status != _ALL.lower() else
                    "Nothing here yet — start a visual novel with Visual Novel RPC running.")
             t.muted(self.list_box, msg, anchor="center", justify="center").pack(pady=40)
             return
-
-        top = max(1, max(int(e.get("playtime_seconds", 0)) for _, e in entries))
         for key, entry in entries:
             self._row(key, entry, top)
+
+    def _refresh_in_place(self, entries: list, top: int) -> bool:
+        """When the same cards are listed in the same order, only update their time
+        read and progress bar instead of building them all again (much faster)."""
+        if self._shown != [key for key, _ in entries] or not entries:
+            return False
+        if any(self._cards[key][0] != _card_shape(key, entry) for key, entry in entries):
+            return False
+        for key, entry in entries:
+            _shape, sub, bar = self._cards[key]
+            text, value = _card_progress(entry, top)
+            if sub.cget("text") != text:
+                sub.configure(text=text)
+            if abs(bar.get() - value) > 0.001:
+                bar.set(value)
+        return True
 
     def _row(self, key: str, entry: dict, top: int) -> None:
         row = t.card(self.list_box, corner_radius=10)
@@ -109,7 +132,6 @@ class LibraryPage(ctk.CTkFrame):
         thumb.grid(row=0, column=0, rowspan=3, padx=12, pady=12)
 
         name = display_name(key, entry)
-        seconds = int(entry.get("playtime_seconds", 0))
         name_lbl = ctk.CTkLabel(row, text=t.ellipsize(name, 50), anchor="w", font=t.font(14, "bold"),
                                 text_color=t.TEXT)
         name_lbl.grid(row=0, column=1, sticky="sw", pady=(14, 0))
@@ -120,19 +142,15 @@ class LibraryPage(ctk.CTkFrame):
         if status in STATUSES:
             t.chip(line, f" {status.capitalize()} ", fg_color=t.SURFACE_ALT,
                    text_color=t.STATUS_COLORS[status]).pack(side="left", padx=(0, 8))
-        bits = [f"{format_playtime(seconds)} read"]
-        last = stats.last_played_text(entry.get("last_played"))
-        if last:
-            bits.append(last)
-        if entry.get("vndb_id"):
-            bits.append(entry["vndb_id"])
-        sub = t.muted(line, "   ·   ".join(bits))
+        text, value = _card_progress(entry, top)
+        sub = t.muted(line, text)
         sub.pack(side="left")
 
         bar = ctk.CTkProgressBar(row, height=4, corner_radius=2, progress_color=t.ACCENT,
                                  fg_color=t.SURFACE_ALT)
-        bar.set(seconds / top)
+        bar.set(value)
         bar.grid(row=2, column=1, sticky="new", pady=(6, 14))
+        self._cards[key] = (_card_shape(key, entry), sub, bar)
 
         # The whole card (but not its buttons) opens the game's details.
         for widget in (row, thumb, name_lbl, line, sub, bar):
@@ -160,3 +178,22 @@ class LibraryPage(ctk.CTkFrame):
     def _remove(self, key: str, name: str) -> None:
         if remove_game(self, self.engine, key, name):
             self._reload()
+
+
+def _card_shape(key: str, entry: dict) -> tuple:
+    """What a card is built from, apart from the time read: when this changes the
+    card has to be built again."""
+    return (display_name(key, entry), entry.get("status"), bool(entry.get("path")),
+            cached_cover_for_entry(entry), entry.get("vndb_id"))
+
+
+def _card_progress(entry: dict, top: int) -> tuple[str, float]:
+    """A card's "3h 20m read · today · v123" line and progress bar value."""
+    seconds = int(entry.get("playtime_seconds", 0))
+    bits = [f"{format_playtime(seconds)} read"]
+    last = stats.last_played_text(entry.get("last_played"))
+    if last:
+        bits.append(last)
+    if entry.get("vndb_id"):
+        bits.append(entry["vndb_id"])
+    return "   ·   ".join(bits), seconds / top
