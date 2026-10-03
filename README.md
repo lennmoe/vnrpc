@@ -80,13 +80,6 @@ python build.py
 
 The result is `dist\VisualNovelRPC.exe`. Close the app before building.
 
-## Publish a release
-
-1. Bump `__version__` in `vnrpc/__init__.py` (e.g. `1.2.1`) and build.
-2. Create a GitHub release tagged `v1.2.1` (or `1.2.1`) and attach `dist\VisualNovelRPC.exe`.
-
-Copies already installed see the newer tag at their next launch, download the attached .exe and restart on it.
-
 ## Tests
 
 ```
