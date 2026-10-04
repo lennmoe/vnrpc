@@ -47,22 +47,21 @@ class SettingsPage(ctk.CTkFrame):
         )
         tabs.pack(fill="both", expand=True, padx=16, pady=(0, 16))
         self.tabs = tabs
-        # Only General is built up front: the other tabs are filled the first time
-        # they're opened, so the page shows up quicker. Until then they're None.
+        # Only the tab on screen is built: the others are filled the first time
+        # they're opened, so the page (and a theme change, which comes back on the
+        # Theme tab) shows up quicker. Until then their widgets are None/missing.
         self.theme_tab: ThemeTab | None = None
         self.rules_text: ctk.CTkTextbox | None = None
         self.blacklist_text: ctk.CTkTextbox | None = None
-        self._unbuilt = {"Theme": self._build_theme, "Title rules": self._build_rules,
-                         "Blacklist": self._build_blacklist}
-        self._build_general(tabs.add("General"))
+        self._unbuilt = {"General": self._build_general, "Theme": self._build_theme,
+                         "Title rules": self._build_rules, "Blacklist": self._build_blacklist}
         for name in self._unbuilt:
             tabs.add(name)
-        if tab:
-            tabs.set(tab)
-            self._build_tab()
+        tabs.set(tab or "General")
+        self._build_tab()
 
-    def _build_tab(self) -> None:
-        name = self.tabs.get()
+    def _build_tab(self, name: str | None = None) -> None:
+        name = name or self.tabs.get()
         build = self._unbuilt.pop(name, None)
         if build:
             build(self.tabs.tab(name))
@@ -517,6 +516,7 @@ class SettingsPage(ctk.CTkFrame):
         app.after(50, app.rebuild_ui)  # new theme, and every page shows the imported data
 
     def _save(self) -> None:
+        self._build_tab("General")  # Save reads its fields, even if it was never opened
         try:
             rules = self._parse_rules() if self.rules_text else list(self.cfg.get("title_rules") or [])
         except ValueError as exc:
