@@ -68,8 +68,18 @@ class SettingsPage(ctk.CTkFrame):
             build(self.tabs.tab(name))
 
     def _build_theme(self, frame) -> None:
-        self.theme_tab = ThemeTab(frame, self.cfg)
+        self.theme_tab = ThemeTab(frame, self.cfg, on_apply=self._apply_theme)
         self.theme_tab.pack(fill="both", expand=True)
+
+    def _apply_theme(self, name: str, custom: dict | None) -> None:
+        """A theme was clicked: save it and restyle the app right away. That rebuilds
+        every widget, this page included, which comes back on the Theme tab."""
+        self.cfg["theme"] = name
+        if custom is not None:
+            self.cfg["custom_theme"] = custom
+        self.cfg.save()
+        app = self.app
+        app.after(30, app.rebuild_ui)
 
     def _build_general(self, tab) -> None:
         frame = t.scrollable(tab)
@@ -513,11 +523,6 @@ class SettingsPage(ctk.CTkFrame):
             messagebox.showerror("Title rules", str(exc), parent=self)
             return
         try:
-            custom = self.theme_tab.custom_value() if self.theme_tab else self.cfg.get("custom_theme")
-        except ValueError as exc:
-            messagebox.showerror("Custom theme", str(exc), parent=self)
-            return
-        try:
             interval = max(1, int(float(self.min_interval.get())))
         except ValueError:
             interval = DEFAULTS["update_min_interval"]
@@ -564,21 +569,11 @@ class SettingsPage(ctk.CTkFrame):
                 autostart.set_enabled(bool(self.launch_at_startup.get()))
             except OSError as exc:
                 messagebox.showwarning("Startup", f"Couldn't change the startup setting: {exc}", parent=self)
-        new_theme = self.theme_tab.theme_name() if self.theme_tab else self.cfg.get("theme", t.SYSTEM)
-        old_custom = self.cfg.get("custom_theme")
-        self.cfg["theme"] = new_theme
-        self.cfg["custom_theme"] = custom
         self.cfg.save()
         self.engine.reload_config()
         self.app.apply_screenshot_settings()
         self.app.apply_mascot_settings()
         self.built_from = copy.deepcopy(self.cfg.data)  # what's on the page is what's saved
-        restyle = new_theme != t.current_theme or (new_theme == "custom" and custom != old_custom)
-        if restyle:
-            # Re-theming rebuilds every widget, this page included: come back to the same tab.
-            app = self.app
-            app.after(50, app.rebuild_ui)
-            return
         self.save_btn.configure(text="Saved ✓")
         self.after(1500, lambda: self.save_btn.winfo_exists() and self.save_btn.configure(text="Save"))
 

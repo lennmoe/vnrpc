@@ -42,7 +42,7 @@ Windows tray app. It reads the title of the VN's window, so it works with most e
 
 <p align="center"><img src="image/share-card.png" width="720" alt="My week in visual novels card"></p>
 
-**Themes** — Dark, Light, Sakura, a few presets, or your own colors.
+**Themes** — pick one with a click: Dark, Light, Sakura, popular schemes (Dracula, Nord, Catppuccin, Tokyo Night, Gruvbox, Rosé Pine, Solarized…), or your own colors.
 
 <p align="center"><img src="image/themes.png" width="900" alt="The main window in the Dark, Sakura and Lilac themes"></p>
 

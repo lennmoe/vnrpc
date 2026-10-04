@@ -7,8 +7,6 @@ import customtkinter as ctk
 
 from ..paths import APP_ICON_ICO
 
-# Every color the UI uses, per theme. A theme is applied once, before any widget is
-# built (App.__init__, or App's rebuild after the theme is changed in Settings).
 THEMES: dict[str, dict[str, str]] = {
     "dark": {
         "label": "Dark", "mode": "dark",
@@ -91,7 +89,7 @@ def build_custom_palette(custom: dict | None) -> dict[str, str]:
     bg, surface, accent, text = pick["BG"], pick["SURFACE"], pick["ACCENT"], pick["TEXT"]
     alt = mix(surface, text, 0.07)
     selected = accent
-    for step in range(20):  # the selected segment keeps TEXT on it, so it must stay readable
+    for step in range(29):  # the selected segment keeps TEXT on it, so it must stay readable
         selected = mix(alt, accent, 1 - step * 0.035)
         if contrast(text, selected) >= 4.5:
             break
@@ -120,8 +118,10 @@ def set_custom_theme(custom: dict | None) -> None:
     THEMES["custom"] = build_custom_palette(custom)
 
 
-def _preset(label: str, mode: str, bg: str, surface: str, accent: str, text: str) -> dict[str, str]:
-    palette = build_custom_palette({"mode": mode, "BG": bg, "SURFACE": surface, "ACCENT": accent, "TEXT": text})
+def _preset(label: str, mode: str, bg: str, surface: str, accent: str, text: str,
+            **overrides: str) -> dict[str, str]:
+    palette = build_custom_palette({"mode": mode, "BG": bg, "SURFACE": surface, "ACCENT": accent, "TEXT": text,
+                                    "overrides": overrides})
     palette["label"] = label
     return palette
 
@@ -131,6 +131,15 @@ THEMES.update(
     lilac=_preset("Lilac", "light", "#CBCFF4", "#FFF9DC", "#5B5FC7", "#2F2C57"),
     sky=_preset("Sky", "light", "#69D0F1", "#EFEDD1", "#15729A", "#16323F"),
     mint=_preset("Neon Mint", "dark", "#101516", "#182122", "#54E6D4", "#E6F7F4"),
+    amoled=_preset("AMOLED Black", "dark", "#000000", "#0E0F11", "#5865F2", "#F2F3F5"),
+    dracula=_preset("Dracula", "dark", "#282A36", "#343746", "#BD93F9", "#F8F8F2"),
+    nord=_preset("Nord", "dark", "#2E3440", "#3B4252", "#88C0D0", "#ECEFF4"),
+    mocha=_preset("Catppuccin Mocha", "dark", "#1E1E2E", "#313244", "#CBA6F7", "#CDD6F4"),
+    tokyo=_preset("Tokyo Night", "dark", "#1A1B26", "#24283B", "#7AA2F7", "#C0CAF5"),
+    gruvbox=_preset("Gruvbox", "dark", "#282828", "#3C3836", "#FABD2F", "#EBDBB2"),
+    rosepine=_preset("Rosé Pine", "dark", "#191724", "#1F1D2E", "#EBBCBA", "#E0DEF4"),
+    latte=_preset("Catppuccin Latte", "light", "#DCE0E8", "#EFF1F5", "#8839EF", "#4C4F69", MUTED="#5C5F77"),
+    solarized=_preset("Solarized Light", "light", "#EEE8D5", "#FDF6E3", "#268BD2", "#073642"),
 )
 set_custom_theme(None)  # last, so "Custom" ends the list
 
@@ -149,9 +158,6 @@ def windows_mode() -> str:
         return "dark"
 
 
-def theme_choices() -> list[tuple[str, str]]:
-    """``(name, label)`` for the theme menu, System first and Custom last."""
-    return [(SYSTEM, "System (Windows)")] + [(name, palette["label"]) for name, palette in THEMES.items()]
 
 BG = SURFACE = SURFACE_ALT = SURFACE_HOVER = BORDER = TEXT = MUTED = SUBTLE = ""
 ACCENT = ACCENT_HOVER = ACCENT_SOFT = ON_ACCENT = SELECTED = SELECTED_HOVER = GREEN = RED = DANGER_HOVER = DANGER_BORDER = ""

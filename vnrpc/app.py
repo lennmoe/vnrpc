@@ -795,6 +795,7 @@ class App(ctk.CTk):
         self._render_snapshot(self._last_snapshot)
         self.apply_mascot_settings()
         way_back()
+        self.after(_PREBUILD_AFTER_MS, self._prebuild_pages)
 
     def _check_update(self) -> None:
         try:

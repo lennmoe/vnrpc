@@ -71,7 +71,18 @@ def test_system_theme_follows_windows(monkeypatch):
         theme.apply_theme("dark")
 
 
-def test_theme_menu_lists_system_first_and_custom_last():
-    names = [name for name, _label in theme.theme_choices()]
-    assert names[0] == "system" and names[-1] == "custom"
-    assert {"dark", "light", "sakura", "butter", "lilac", "sky", "mint"} <= set(names)
+def test_custom_is_the_last_theme():
+    names = list(theme.THEMES)
+    assert names[-1] == "custom"
+    assert {"dark", "light", "sakura", "dracula", "nord", "mocha", "latte", "solarized"} <= set(names)
+
+
+def test_theme_tile_image():
+    from vnrpc.ui.theme_editor import TILE_H, TILE_W, _SCALE, tile_image
+
+    img = tile_image((theme.THEMES["dark"], theme.THEMES["light"]), "Match Windows", ring="#5865F2",
+                     bold=True, label_color="#FFFFFF")
+    assert img.mode == "RGBA" and img.size == (TILE_W * _SCALE, TILE_H * _SCALE)
+    assert img.getpixel((0, 0))[3] == 0  # rounded corner: see-through
+    left, right = img.getpixel((4 * _SCALE, 50 * _SCALE)), img.getpixel((img.width - 5 * _SCALE, 50 * _SCALE))
+    assert left[:3] != right[:3]  # dark half, light half
