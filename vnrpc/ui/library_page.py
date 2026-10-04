@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import tkinter as tk
+
 import customtkinter as ctk
 
 from .. import stats
@@ -9,9 +11,13 @@ from ..covers import cached_cover_for_entry
 from ..engines import is_blacklisted
 from . import theme as t
 from .game_page import display_name, launch_game, locate_game, remove_game
-from .images import load_image
+from .images import load_photo
 
 THUMB = (60, 84)
+# Cards built before the page is first drawn (about a screenful); the rest follow
+# in small batches right after, so a big Library still shows up at once.
+_FIRST_CARDS = 6
+_CARD_BATCH = 4
 _SORTS = ("Most read", "Recent", "A–Z")
 _ALL = "All statuses"
 
@@ -55,7 +61,8 @@ class LibraryPage(ctk.CTkFrame):
         # What's on screen: the keys in order, and per key what its card was built
         # from and the widgets that change while a VN is read (time, progress).
         self._shown: list[str] | None = None
-        self._cards: dict[str, tuple[tuple, ctk.CTkLabel, ctk.CTkProgressBar]] = {}
+        self._cards: dict[str, tuple[tuple, tk.Label, _Bar]] = {}
+        self._build_job = None  # the next batch of cards still to build
 
     def on_show(self) -> None:
         self._reload()
@@ -93,8 +100,11 @@ class LibraryPage(ctk.CTkFrame):
             entries.sort(key=lambda kv: int(kv[1].get("playtime_seconds", 0)), reverse=True)
 
         top = max(1, max((int(e.get("playtime_seconds", 0)) for _, e in entries), default=0))
-        if self._refresh_in_place(entries, top):
+        if self._build_job is None and self._refresh_in_place(entries, top):
             return
+        if self._build_job is not None:
+            self.after_cancel(self._build_job)
+            self._build_job = None
         for w in self.list_box.winfo_children():
             w.destroy()
         self._cards.clear()
@@ -104,8 +114,13 @@ class LibraryPage(ctk.CTkFrame):
                    "Nothing here yet — start a visual novel with Visual Novel RPC running.")
             t.muted(self.list_box, msg, anchor="center", justify="center").pack(pady=40)
             return
-        for key, entry in entries:
+        self._build_cards(entries, top, _FIRST_CARDS)
+
+    def _build_cards(self, entries: list, top: int, count: int) -> None:
+        for key, entry in entries[:count]:
             self._row(key, entry, top)
+        rest = entries[count:]
+        self._build_job = self.after(1, lambda: self._build_cards(rest, top, _CARD_BATCH)) if rest else None
 
     def _refresh_in_place(self, entries: list, top: int) -> bool:
         """When the same cards are listed in the same order, only update their time
@@ -124,32 +139,39 @@ class LibraryPage(ctk.CTkFrame):
         return True
 
     def _row(self, key: str, entry: dict, top: int) -> None:
+        # Only what needs rounded corners (the card, the status chip, the buttons) is
+        # a CustomTkinter widget: the rest are plain tk ones, many times cheaper to
+        # build, sized by hand for the display scaling.
         row = t.card(self.list_box, corner_radius=10)
         row.pack(fill="x", pady=5, padx=6)
         row.grid_columnconfigure(1, weight=1)
+        s = ctk.ScalingTracker.get_widget_scaling(row)
+        bg = t.resolve(t.SURFACE)
+        px = lambda v: round(v * s)  # noqa: E731
 
-        thumb = ctk.CTkLabel(row, text="", image=load_image(cached_cover_for_entry(entry), THUMB, radius=6))
-        thumb.grid(row=0, column=0, rowspan=3, padx=12, pady=12)
+        photo = load_photo(cached_cover_for_entry(entry), THUMB, radius=6, bg=bg, scale=s)
+        thumb = tk.Label(row, image=photo, bg=bg, bd=0)
+        thumb.grid(row=0, column=0, rowspan=3, padx=px(12), pady=px(12))
 
         name = display_name(key, entry)
-        name_lbl = ctk.CTkLabel(row, text=t.ellipsize(name, 50), anchor="w", font=t.font(14, "bold"),
-                                text_color=t.TEXT)
-        name_lbl.grid(row=0, column=1, sticky="sw", pady=(14, 0))
+        # (CTkLabels are 28px high with the text centered: the ipady keep the same spacing.)
+        name_lbl = tk.Label(row, text=t.ellipsize(name, 50), anchor="w", bg=bg, fg=t.resolve(t.TEXT), bd=0,
+                            padx=0, font=_tk_font(14, s, "bold"))
+        name_lbl.grid(row=0, column=1, sticky="sw", pady=(px(14), 0), ipady=px(4))
 
-        line = ctk.CTkFrame(row, fg_color="transparent")
+        line = tk.Frame(row, bg=bg)
         line.grid(row=1, column=1, sticky="w")
         status = entry.get("status")
         if status in STATUSES:
             t.chip(line, f" {status.capitalize()} ", fg_color=t.SURFACE_ALT,
-                   text_color=t.STATUS_COLORS[status]).pack(side="left", padx=(0, 8))
+                   text_color=t.STATUS_COLORS[status]).pack(side="left", padx=(0, px(8)))
         text, value = _card_progress(entry, top)
-        sub = t.muted(line, text)
-        sub.pack(side="left")
+        sub = tk.Label(line, text=text, anchor="w", bg=bg, fg=t.resolve(t.MUTED), bd=0, padx=0,
+                       font=_tk_font(12, s))
+        sub.pack(side="left", ipady=px(5))
 
-        bar = ctk.CTkProgressBar(row, height=4, corner_radius=2, progress_color=t.ACCENT,
-                                 fg_color=t.SURFACE_ALT)
-        bar.set(value)
-        bar.grid(row=2, column=1, sticky="new", pady=(6, 14))
+        bar = _Bar(row, value, height=px(4), bg=t.resolve(t.SURFACE_ALT), fill=t.resolve(t.ACCENT))
+        bar.grid(row=2, column=1, sticky="new", pady=(px(6), px(14)))
         self._cards[key] = (_card_shape(key, entry), sub, bar)
 
         # The whole card (but not its buttons) opens the game's details.
@@ -157,8 +179,8 @@ class LibraryPage(ctk.CTkFrame):
             widget.bind("<Button-1>", lambda _e, k=key: self._open(k))
             widget.configure(cursor="hand2")
 
-        btns = ctk.CTkFrame(row, fg_color="transparent")
-        btns.grid(row=0, column=2, rowspan=3, padx=12)
+        btns = tk.Frame(row, bg=bg)
+        btns.grid(row=0, column=2, rowspan=3, padx=px(12))
         exe_path = entry.get("path", "")
         if exe_path:
             t.primary_button(
@@ -171,6 +193,11 @@ class LibraryPage(ctk.CTkFrame):
         t.danger_button(btns, "Remove", lambda k=key, n=name: self._remove(k, n), width=80).pack(
             side="left", padx=(8, 0)
         )
+
+    def destroy(self) -> None:
+        if self._build_job is not None:
+            self.after_cancel(self._build_job)
+        super().destroy()
 
     def _open(self, key: str) -> None:
         self.app.show_game(key)
@@ -197,3 +224,36 @@ def _card_progress(entry: dict, top: int) -> tuple[str, float]:
     if entry.get("vndb_id"):
         bits.append(entry["vndb_id"])
     return "   ·   ".join(bits), seconds / top
+
+
+class _Bar(tk.Canvas):
+    """A thin progress bar (a CTkProgressBar costs as much as all the rest of a card)."""
+
+    def __init__(self, parent, value: float, *, height: int, bg: str, fill: str) -> None:
+        super().__init__(parent, height=height, bg=bg, highlightthickness=0, bd=0)
+        self._value, self._fill = value, fill
+        self.bind("<Configure>", lambda _e: self._draw_bar())
+
+    def get(self) -> float:
+        return self._value
+
+    def set(self, value: float) -> None:
+        self._value = value
+        self._draw_bar()
+
+    def _draw_bar(self) -> None:
+        self.delete("all")
+        width = int(self.winfo_width() * max(0.0, min(1.0, self._value)))
+        if width > 0:
+            self.create_rectangle(0, 0, width, self.winfo_height(), fill=self._fill, width=0)
+
+
+_FAMILY = ""
+
+
+def _tk_font(size: int, scale: float, weight: str = "normal") -> tuple:
+    """The app's font (as CTkFont uses it) for a plain tk widget, at the display scaling."""
+    global _FAMILY
+    if not _FAMILY:
+        _FAMILY = t.font(size).cget("family")
+    return (_FAMILY, -round(size * scale), weight)

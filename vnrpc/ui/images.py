@@ -8,7 +8,7 @@ from collections import OrderedDict
 from typing import Callable
 
 import requests
-from PIL import Image, ImageChops, ImageColor, ImageDraw, ImageFilter
+from PIL import Image, ImageChops, ImageColor, ImageDraw, ImageFilter, ImageTk
 
 from ..paths import APP_ICON_PNG, COVER_CACHE_DIR
 from . import theme as t
@@ -50,6 +50,43 @@ def load_image(
     while len(_local_cache) > _LOCAL_CACHE_MAX:
         _local_cache.popitem(last=False)
     return made
+
+
+_photo_cache: "OrderedDict[tuple, ImageTk.PhotoImage]" = OrderedDict()
+
+
+def load_photo(path_or_none: str | None, size: tuple[int, int], *, radius: int = 0, bg: str = "#000000",
+               scale: float = 1.0) -> "ImageTk.PhotoImage":
+    """Like :func:`load_image`, for a plain tk Label (far lighter than a CTkLabel when
+    there are many): the cover cut to ``size`` × the display ``scale``, its rounded
+    corners drawn over ``bg``."""
+    px = (max(1, round(size[0] * scale)), max(1, round(size[1] * scale)))
+    try:
+        stamp = os.path.getmtime(path_or_none) if path_or_none else None
+    except OSError:
+        path_or_none, stamp = None, None
+    key = (path_or_none, stamp, px, radius, bg, scale, t.PLACEHOLDER_TOP, t.PLACEHOLDER_FG)
+    cached = _photo_cache.get(key)
+    if cached is not None:
+        _photo_cache.move_to_end(key)
+        return cached
+    img = None
+    if path_or_none:
+        try:
+            with Image.open(path_or_none) as im:
+                img = _fit(im.convert("RGB"), px)
+        except Exception:
+            img = None
+    if img is None:
+        img = _placeholder(px)
+    if radius:
+        rounded = _round(img, max(1, round(radius * scale)))
+        img = Image.new("RGB", px, bg)
+        img.paste(rounded, (0, 0), rounded)
+    photo = _photo_cache[key] = ImageTk.PhotoImage(img)
+    while len(_photo_cache) > _LOCAL_CACHE_MAX:
+        _photo_cache.popitem(last=False)
+    return photo
 
 
 def make_ctk_image(
