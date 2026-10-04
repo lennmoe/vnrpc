@@ -178,8 +178,18 @@ def tile_image(palettes: tuple[dict, ...], label: str, *, ring: str | None, bold
     return img
 
 
+_miniatures: dict[tuple, Image.Image] = {}
+
+
 def _miniature(p: dict, w: int, h: int) -> Image.Image:
-    """A tiny "now reading" card in palette ``p``."""
+    """A tiny "now reading" card in palette ``p`` (kept: re-theming draws them all again)."""
+    key = (tuple(sorted(p.items())), w, h)
+    if key not in _miniatures:
+        _miniatures[key] = _draw_miniature(p, w, h)
+    return _miniatures[key].copy()
+
+
+def _draw_miniature(p: dict, w: int, h: int) -> Image.Image:
     s = _SCALE
     img = Image.new("RGBA", (w, h), p["BG"])
     d = ImageDraw.Draw(img)

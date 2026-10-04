@@ -184,6 +184,20 @@ def apply_theme(name: str) -> None:
     ctk.set_appearance_mode(palette["mode"])
 
 
+def stop_restyling(widgets) -> None:
+    """Take ``widgets`` and everything in them out of CustomTkinter's light/dark
+    tracking: they're about to be destroyed, and switching between a light and a
+    dark theme would otherwise repaint every one of them first."""
+    ids: set[int] = set()
+    stack = list(widgets)
+    while stack:
+        widget = stack.pop()
+        ids.add(id(widget))
+        stack.extend(widget.winfo_children())
+    callbacks = ctk.AppearanceModeTracker.callback_list
+    callbacks[:] = [cb for cb in callbacks if id(getattr(cb, "__self__", None)) not in ids]
+
+
 def resolve(color) -> str:
     """A ``(light, dark)`` pair as the single color plain tk widgets (Canvas) need."""
     if isinstance(color, (tuple, list)):

@@ -8,6 +8,7 @@ import threading
 import time
 import webbrowser
 from pathlib import Path
+import tkinter as tk
 from tkinter import messagebox
 
 import customtkinter as ctk
@@ -56,6 +57,9 @@ _TRANSIENT = {"cover"}
 _PREBUILD = ("library", "screenshots", "share", "settings")
 _PREBUILD_AFTER_MS = 1500
 _PREBUILD_GAP_MS = 250
+# Building a page freezes the window for a moment: only do it once the user has
+# left the mouse and keyboard alone for this long.
+_PREBUILD_IDLE_S = 1.5
 
 
 class App(ctk.CTk):
@@ -110,6 +114,9 @@ class App(ctk.CTk):
         # Keys go to the page on screen (gallery arrows, Esc to go back, capturing a hotkey…).
         self.bind("<KeyPress>", self._on_key)
         self.bind("<KeyRelease>", self._on_key)
+        self._last_input = 0.0
+        for sequence in ("<Motion>", "<ButtonPress>", "<KeyPress>", "<MouseWheel>"):
+            self.bind_all(sequence, self._note_input, add="+")
         self.protocol("WM_DELETE_WINDOW", self._hide_to_tray)
         self._tray = None
         self._tray_failed = False
@@ -265,15 +272,24 @@ class App(ctk.CTk):
         self.mode.pack(side="left", padx=(12, 10))
 
         self.mode_hint = t.muted(inner, "Finds running VN engines by itself", size=11)
-        self.window_menu = ctk.CTkOptionMenu(
-            inner, values=[_PICK_WINDOW], command=self._on_pick_window, width=260, height=30,
-            corner_radius=8, fg_color=t.SURFACE_ALT, button_color=t.SURFACE_HOVER,
-            button_hover_color=t.BORDER, text_color=t.TEXT, dropdown_fg_color=t.SURFACE,
-            dropdown_hover_color=t.SURFACE_HOVER, dropdown_text_color=t.TEXT, dynamic_resizing=False,
-            font=t.font(12),
-        )
-        self.window_menu.set(_PICK_WINDOW)
-        self.refresh_btn = t.secondary_button(inner, "↻", self._refresh_windows, width=34, height=30)
+        # The window picker only shows in Manual mode: made the first time it's needed.
+        self._detect_inner = inner
+        self.window_menu: ctk.CTkOptionMenu | None = None
+        self.refresh_btn: ctk.CTkButton | None = None
+
+    def _window_picker(self) -> ctk.CTkOptionMenu:
+        if self.window_menu is None:
+            self.window_menu = ctk.CTkOptionMenu(
+                self._detect_inner, values=[_PICK_WINDOW], command=self._on_pick_window, width=260, height=30,
+                corner_radius=8, fg_color=t.SURFACE_ALT, button_color=t.SURFACE_HOVER,
+                button_hover_color=t.BORDER, text_color=t.TEXT, dropdown_fg_color=t.SURFACE,
+                dropdown_hover_color=t.SURFACE_HOVER, dropdown_text_color=t.TEXT, dynamic_resizing=False,
+                font=t.font(12),
+            )
+            self.window_menu.set(_PICK_WINDOW)
+            self.refresh_btn = t.secondary_button(self._detect_inner, "↻", self._refresh_windows, width=34,
+                                                  height=30)
+        return self.window_menu
 
     def _on_info_resize(self, event) -> None:
         wrap = max(200, event.width - 8)
@@ -481,11 +497,12 @@ class App(ctk.CTk):
     def _sync_mode_widgets(self) -> None:
         if self.mode.get() == "Manual":
             self.mode_hint.pack_forget()
-            self.window_menu.pack(side="left", fill="x", expand=True, padx=(0, 6))
+            self._window_picker().pack(side="left", fill="x", expand=True, padx=(0, 6))
             self.refresh_btn.pack(side="left")
         else:
-            self.window_menu.pack_forget()
-            self.refresh_btn.pack_forget()
+            if self.window_menu is not None:
+                self.window_menu.pack_forget()
+                self.refresh_btn.pack_forget()
             self.mode_hint.pack(side="left")
 
     def _refresh_windows(self) -> None:
@@ -497,7 +514,7 @@ class App(ctk.CTk):
                 continue
             label = f"{t.ellipsize(w.title, 40)}  —  {w.exe}"
             self._window_map[label] = w.exe
-        self.window_menu.configure(values=list(self._window_map) or [_NO_WINDOWS])
+        self._window_picker().configure(values=list(self._window_map) or [_NO_WINDOWS])
         current = self.config_data["manual_target"].get("exe", "")
         for label, exe in self._window_map.items():
             if exe.lower() == current.lower():
@@ -642,10 +659,19 @@ class App(ctk.CTk):
             page.on_show()
         return page
 
+    def _note_input(self, _event=None) -> None:
+        self._last_input = time.monotonic()
+
+    def _user_busy(self) -> bool:
+        return time.monotonic() - self._last_input < _PREBUILD_IDLE_S
+
     def _prebuild_pages(self, todo: tuple[str, ...] = _PREBUILD) -> None:
         """Build the next page of ``todo`` under the one on screen, then the rest later."""
         while todo and todo[0] in self._pages:
             todo = todo[1:]
+        if self._user_busy():  # don't freeze the window while it's being used
+            self.after(500, lambda: self._prebuild_pages(todo))
+            return
         if not todo:
             self._prebuild_recent_game()
             return
@@ -674,6 +700,9 @@ class App(ctk.CTk):
         """The page of the VN read last: the one most likely to be opened."""
         games = self.engine.config.all_games()
         if not games or "game" in self._pages:
+            return
+        if self._user_busy():
+            self.after(500, self._prebuild_recent_game)
             return
         key = max(games, key=lambda k: int(games[k].get("last_played") or 0))
         try:
@@ -779,15 +808,28 @@ class App(ctk.CTk):
         """Re-create every widget in the theme now in the config (Settings → Theme).
         Popups are closed; the page on screen, what's being read and the pause state
         carry over."""
-        t.set_custom_theme(self.config_data.get("custom_theme"))
-        t.apply_theme(self.config_data.get("theme", t.SYSTEM))
         way_back = self._way_back()
         if self._mascot:
             self._mascot.destroy()
             self._mascot = None
+        # Destroying CustomTkinter widgets is slow (most of a re-theme): the old ones
+        # are only hidden now, and destroyed a page at a time while the app is idle.
+        old: list = []
         for child in self.winfo_children():
-            child.destroy()
-        self.configure(fg_color=t.BG)
+            if isinstance(child, (tk.Toplevel, tk.Menu)):  # popups, menus…
+                child.destroy()
+            elif child.winfo_manager() == "grid":
+                child.grid_remove()
+                old.append(child)
+            # else: hidden by an earlier re-theme, already waiting to be destroyed
+        t.stop_restyling(old)
+        t.set_custom_theme(self.config_data.get("custom_theme"))
+        t.apply_theme(self.config_data.get("theme", t.SYSTEM))
+        # Not self.configure(fg_color=…): CustomTkinter would also repaint every
+        # child, the hidden old UI included. The new widgets read it as they're made.
+        self._fg_color = t.BG
+        tk.Tk.configure(self, bg=self._apply_appearance_mode(t.BG))
+        self.after(_PREBUILD_AFTER_MS, lambda: self._destroy_later(old))
         self._cover_key = ("unset",)
         self._asset_thumb = app_icon_image(THUMB_SIZE[0], radius=8)
         self._build()
@@ -796,6 +838,21 @@ class App(ctk.CTk):
         self.apply_mascot_settings()
         way_back()
         self.after(_PREBUILD_AFTER_MS, self._prebuild_pages)
+
+    def _destroy_later(self, widgets: list) -> None:
+        """Destroy ``widgets`` (the UI before a re-theme) one page at a time, only
+        while the user leaves the app alone."""
+        widgets = [w for w in widgets if w.winfo_exists()]
+        if not widgets:
+            return
+        if not self._user_busy():
+            widget = widgets[-1]
+            pages = widget.winfo_children() if widget is not None else []
+            if len(pages) > 1:  # the old content area: its pages one by one
+                pages[0].destroy()
+            else:
+                widgets.pop().destroy()
+        self.after(150, lambda: self._destroy_later(widgets))
 
     def _check_update(self) -> None:
         try:
