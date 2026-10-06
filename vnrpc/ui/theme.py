@@ -212,6 +212,18 @@ def font(size: int = 13, weight: str = "normal") -> ctk.CTkFont:
     return ctk.CTkFont(size=size, weight=weight)
 
 
+_FAMILY = ""
+
+
+def tk_font(size: int, scale: float, weight: str = "normal") -> tuple:
+    """The app's font (as CTkFont uses it) for a plain tk widget, at the display
+    ``scale`` (CustomTkinter scales its own widgets' fonts, not plain tk ones)."""
+    global _FAMILY
+    if not _FAMILY:
+        _FAMILY = font(size).cget("family")
+    return (_FAMILY, -round(size * scale), weight)
+
+
 def mono(size: int = 12) -> ctk.CTkFont:
     return ctk.CTkFont(family="Consolas", size=size)
 

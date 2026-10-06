@@ -224,6 +224,12 @@ class SettingsPage(ctk.CTkFrame):
         )
         if not updater.supported():
             self.check_updates.configure(state="disabled")
+        row = ctk.CTkFrame(frame, fg_color="transparent")
+        row.pack(fill="x", padx=16, pady=4)
+        t.secondary_button(row, "What's new", lambda: self.app.show_whats_new(recent=5), width=120).pack(
+            side="left")
+        t.muted(row, f"Version {__version__}: the notes of the last few releases.", size=11).pack(
+            side="left", padx=10)
 
         _section(frame, "Desktop mascot")
         self.mascot_enabled = t.switch(

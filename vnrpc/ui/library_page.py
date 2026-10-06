@@ -156,7 +156,7 @@ class LibraryPage(ctk.CTkFrame):
         name = display_name(key, entry)
         # (CTkLabels are 28px high with the text centered: the ipady keep the same spacing.)
         name_lbl = tk.Label(row, text=t.ellipsize(name, 50), anchor="w", bg=bg, fg=t.resolve(t.TEXT), bd=0,
-                            padx=0, font=_tk_font(14, s, "bold"))
+                            padx=0, font=t.tk_font(14, s, "bold"))
         name_lbl.grid(row=0, column=1, sticky="sw", pady=(px(14), 0), ipady=px(4))
 
         line = tk.Frame(row, bg=bg)
@@ -167,7 +167,7 @@ class LibraryPage(ctk.CTkFrame):
                    text_color=t.STATUS_COLORS[status]).pack(side="left", padx=(0, px(8)))
         text, value = _card_progress(entry, top)
         sub = tk.Label(line, text=text, anchor="w", bg=bg, fg=t.resolve(t.MUTED), bd=0, padx=0,
-                       font=_tk_font(12, s))
+                       font=t.tk_font(12, s))
         sub.pack(side="left", ipady=px(5))
 
         bar = _Bar(row, value, height=px(4), bg=t.resolve(t.SURFACE_ALT), fill=t.resolve(t.ACCENT))
@@ -246,14 +246,3 @@ class _Bar(tk.Canvas):
         width = int(self.winfo_width() * max(0.0, min(1.0, self._value)))
         if width > 0:
             self.create_rectangle(0, 0, width, self.winfo_height(), fill=self._fill, width=0)
-
-
-_FAMILY = ""
-
-
-def _tk_font(size: int, scale: float, weight: str = "normal") -> tuple:
-    """The app's font (as CTkFont uses it) for a plain tk widget, at the display scaling."""
-    global _FAMILY
-    if not _FAMILY:
-        _FAMILY = t.font(size).cget("family")
-    return (_FAMILY, -round(size * scale), weight)

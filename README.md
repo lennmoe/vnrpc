@@ -52,7 +52,7 @@ Download `VisualNovelRPC.exe` and run it. Nothing else is needed.
 
 Discord desktop must be open, with **Settings → Activity Privacy → Share your detected activities** turned on.
 
-The app checks for a new release each time it starts and offers to update itself (you can turn that off in **Settings → App**).
+The app checks for a new release each time it starts and offers to update itself (you can turn that off in **Settings → App**). After an update, a **What's new** page shows what changed (also in **Settings → App**).
 
 ## Use your own Discord app (optional)
 

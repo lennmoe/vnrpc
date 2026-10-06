@@ -32,6 +32,7 @@ DEFAULTS: dict[str, Any] = {
     "update_min_interval": 5,
     "start_minimized": False,
     "check_updates": True,
+    "last_seen_version": "",  # for "What's new" after an update
     "mascot_enabled": False,
     "mascot_image": "",  # "" = the built-in character
     "mascot_height": 420,  # px

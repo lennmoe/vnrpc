@@ -32,6 +32,7 @@ from .ui.screenshots_page import ScreenshotsPage
 from .ui.settings_page import SettingsPage
 from .ui.share_page import SharePage
 from .ui.toast import show_toast
+from .ui.whats_new_page import WhatsNewPage
 from .ui.wishlist_page import WishlistPage
 from .winapi import CaptureError, client_rect_on_screen
 
@@ -51,7 +52,7 @@ _NAV = (
 )
 _NAV_OF = {"game": "library", "wishlist": "library", "cover": "home"}
 # Built again each time they're shown, and dropped when another page is.
-_TRANSIENT = {"cover"}
+_TRANSIENT = {"cover", "whats_new"}
 # Shortly after startup these pages are built in the background, one at a time,
 # so even the first click on them is instant.
 _PREBUILD = ("library", "screenshots", "share", "settings")
@@ -125,6 +126,7 @@ class App(ctk.CTk):
         if self.config_data["start_minimized"]:
             self.after(300, self._hide_to_tray)
         self.after(_PREBUILD_AFTER_MS, self._prebuild_pages)
+        self.after(0, self._check_whats_new)
         if updater.supported() and self.config_data["check_updates"]:
             threading.Thread(target=self._check_update, name="update-check", daemon=True).start()
 
@@ -746,6 +748,23 @@ class App(ctk.CTk):
     def show_wishlist(self) -> None:
         self._show("wishlist", lambda: WishlistPage(self._content, self))
 
+    def show_whats_new(self, since: str | None = None, recent: int = 0) -> None:
+        self._show("whats_new", lambda: WhatsNewPage(self._content, self)).load(since, recent)
+
+    def _check_whats_new(self) -> None:
+        """First start of a new version: open "What's new" on what changed since the
+        version used last."""
+        last = self.config_data.get("last_seen_version") or ""
+        if last == __version__:
+            return
+        self.config_data["last_seen_version"] = __version__
+        self.config_data.save()
+        if last and not updater.is_newer(__version__, last):
+            return  # an older version was installed again
+        if not last and not self.engine.config.all_games():
+            return  # a fresh install: nothing new to them yet
+        self.show_whats_new(since=last or None)
+
     def show_share(self) -> None:
         self._show("share", lambda: SharePage(self._content, self))
 
@@ -779,6 +798,8 @@ class App(ctk.CTk):
         if name == "settings":
             tab = page.tabs.get()
             return lambda: self.show_settings(tab)
+        if name == "whats_new":
+            return lambda: self.show_whats_new(recent=5)
         if name in ("library", "screenshots", "share", "wishlist"):
             return getattr(self, f"show_{name}")
         return self.show_home
