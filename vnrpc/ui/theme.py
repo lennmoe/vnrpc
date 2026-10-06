@@ -244,9 +244,10 @@ def danger_button(parent, text: str, command=None, **kw) -> ctk.CTkButton:
 def link_button(parent, text: str, command=None, **kw) -> ctk.CTkButton:
     """A borderless button that reads as a link, e.g. "← Library" at the top of a page."""
     kw.setdefault("height", 28)
+    kw.setdefault("font", font(13))
     return ctk.CTkButton(
         parent, text=text, command=command, fg_color="transparent", hover_color=SURFACE_HOVER,
-        text_color=MUTED, corner_radius=8, font=font(13), width=0, **kw,
+        text_color=MUTED, corner_radius=8, width=0, **kw,
     )
 
 

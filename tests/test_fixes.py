@@ -189,3 +189,25 @@ def test_closing_is_retried_if_handling_it_fails(monkeypatch):
         watcher._tick()  # 3rd miss: first attempt to report the close fails
     watcher._tick()
     assert events[-1] is None
+
+
+def test_set_playtime_by_hand_keeps_the_history(cfg):
+    cfg.add_playtime_seconds("game", 90)
+    daily = cfg.game_override("game")["daily"]
+    cfg.set_playtime_seconds("game", 5 * 3600 + 30 * 60)
+    assert cfg.get_playtime_seconds("game") == 19800
+    assert cfg.game_override("game")["daily"] == daily
+    cfg.set_playtime_seconds("game", -5)
+    assert cfg.get_playtime_seconds("game") == 0
+
+
+def test_set_playtime_while_the_vn_is_being_read(cfg, monkeypatch):
+    engine = VNRPCEngine(cfg)
+    monkeypatch.setattr(engine, "reload_config", lambda: None)
+    engine._playtime_key = "game"
+    engine._playtime_tick_start = time.time() - 600  # 10 minutes not saved yet
+    engine.set_playtime("game", 3600)
+    assert cfg.get_playtime_seconds("game") == 3600  # those 10 minutes are part of what was replaced
+    engine._playtime_tick_start = time.time() - 60
+    engine._flush_playtime()
+    assert cfg.get_playtime_seconds("game") == 3660  # and reading goes on counting from there

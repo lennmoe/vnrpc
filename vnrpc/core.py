@@ -499,6 +499,15 @@ class VNRPCEngine:
         self.config.clear_game_override(key)
         self.reload_config()
 
+    def set_playtime(self, key: str, seconds: int) -> None:
+        """The user corrected a VN's total time read (its page in the Library)."""
+        with self._playtime_lock:
+            if key == self._playtime_key:
+                self._flush_playtime_locked()  # what was read until now is replaced too
+                self._playtime_tick_start = time.time()
+            self.config.set_playtime_seconds(key, seconds)
+        self.reload_config()
+
     def reset_playtime(self, key: str) -> None:
         with self._playtime_lock:
             self.config.reset_playtime(key)

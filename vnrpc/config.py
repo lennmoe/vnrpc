@@ -351,6 +351,15 @@ class Config:
             entry["last_played"] = int(time.time())
             self._save_game_file_locked(key)
 
+    def set_playtime_seconds(self, key: str, seconds: int) -> None:
+        """Set a VN's total time read by hand (time read before it was tracked, or a
+        correction). The day-by-day history is left as it is."""
+        with self._lock:
+            entry = self._games.setdefault(key, {})
+            entry["playtime_seconds"] = max(0, int(seconds))
+            self._playtime_frac.pop(key, None)
+            self._save_game_file_locked(key)
+
     def reset_playtime(self, key: str) -> None:
         with self._lock:
             entry = self._games.get(key)

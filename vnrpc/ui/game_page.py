@@ -333,6 +333,54 @@ class GamePage(ctk.CTkFrame):
             t.overline(tile, label).pack(fill="x", padx=12, pady=(10, 0))
             ctk.CTkLabel(tile, text=value, anchor="w", font=t.font(17, "bold"), text_color=t.TEXT).pack(
                 fill="x", padx=12, pady=(0, 10))
+        edit = ctk.CTkLabel(parent, text="Edit total read", font=t.font(11, "bold"), text_color=t.ACCENT,
+                            cursor="hand2", height=18)
+        edit.pack(anchor="w", padx=12, pady=(2, 0))
+        edit.bind("<Button-1>", lambda _e: self._edit_time_read())
+        self._tiles_row = edit
+        self._time_editor: ctk.CTkFrame | None = None
+
+    def _edit_time_read(self) -> None:
+        """Below the tiles: set the total time read by hand."""
+        if self._time_editor is not None:
+            self._time_editor.destroy()
+            self._time_editor = None
+            return
+        seconds = self.engine.config.get_playtime_seconds(self.key)
+        box = self._time_editor = t.card(self._tiles_row.master, corner_radius=10)
+        box.pack(fill="x", padx=8, pady=(4, 0), after=self._tiles_row)
+        row = ctk.CTkFrame(box, fg_color="transparent")
+        row.pack(fill="x", padx=12, pady=(10, 4))
+        ctk.CTkLabel(row, text="Total read", font=t.font(13, "bold"), text_color=t.TEXT).pack(side="left")
+        fields = {}
+        for unit, value in (("h", seconds // 3600), ("min", seconds % 3600 // 60)):
+            ent = t.entry(row, width=60, height=30, justify="right")
+            ent.insert(0, str(value))
+            ent.pack(side="left", padx=(12 if unit == "h" else 6, 4))
+            ent.bind("<Return>", lambda _e: save())
+            ctk.CTkLabel(row, text=unit, font=t.font(13), text_color=t.MUTED).pack(side="left")
+            fields[unit] = ent
+        error = ctk.CTkLabel(box, text="", font=t.font(11), text_color=t.RED, anchor="w")
+
+        def save() -> None:
+            try:
+                hours, minutes = (int(fields[u].get().strip() or 0) for u in ("h", "min"))
+                if hours < 0 or minutes < 0:
+                    raise ValueError
+            except ValueError:
+                error.configure(text="Enter whole numbers of hours and minutes.")
+                error.pack(fill="x", padx=12, pady=(0, 8))
+                return
+            self.engine.set_playtime(self.key, hours * 3600 + minutes * 60)
+            self._reopen()
+
+        t.primary_button(row, "Save", save, width=70, height=30).pack(side="left", padx=(14, 0))
+        t.secondary_button(row, "Cancel", self._edit_time_read, width=70, height=30).pack(side="left", padx=6)
+        t.muted(box, "Time read before the app tracked it, or a correction. The day-by-day history "
+                     "(this week, the chart) stays as it is.", size=11, wraplength=520).pack(
+            fill="x", padx=12, pady=(0, 10))
+        fields["h"].focus_set()
+        fields["h"].select_range(0, "end")
 
     def _build_screenshots(self, parent) -> None:
         self._shots_box = t.card(parent)
