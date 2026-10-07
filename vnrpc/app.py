@@ -66,6 +66,9 @@ _PREBUILD_IDLE_S = 1.5
 class App(ctk.CTk):
     def __init__(self) -> None:
         super().__init__()
+        # Shown only once painted (see _on_root_map): hidden until the first paint.
+        self.attributes("-alpha", 0.0)
+        self._reveal_job = None
         ensure_dirs()
         self.config_data = Config.load()
 
@@ -119,6 +122,8 @@ class App(ctk.CTk):
         for sequence in ("<Motion>", "<ButtonPress>", "<KeyPress>", "<MouseWheel>"):
             self.bind_all(sequence, self._note_input, add="+")
         self.protocol("WM_DELETE_WINDOW", self._hide_to_tray)
+        self.bind("<Map>", self._on_root_map, add="+")
+        self.bind("<Unmap>", self._on_root_unmap, add="+")
         self._tray = None
         self._tray_failed = False
         threading.Thread(target=self._start_tray, daemon=True).start()
@@ -660,6 +665,25 @@ class App(ctk.CTk):
         if hasattr(page, "on_show"):
             page.on_show()
         return page
+
+    # Painting all the CustomTkinter widgets when the window opens or comes back
+    # from the taskbar or the tray takes Tk ~0.3 s, and until then they show as
+    # black boxes. So the window is made see-through whenever it's hidden, and
+    # turned opaque again only once everything has been painted.
+    def _on_root_unmap(self, event) -> None:
+        if event.widget is self:
+            self.attributes("-alpha", 0.0)
+
+    def _on_root_map(self, event) -> None:
+        if event.widget is self and self._reveal_job is None:
+            self._reveal_job = self.after_idle(self._reveal)
+
+    def _reveal(self) -> None:
+        self._reveal_job = None
+        try:
+            self.update()  # every pending paint, while still invisible
+        finally:
+            self.attributes("-alpha", 1.0)
 
     def _note_input(self, _event=None) -> None:
         self._last_input = time.monotonic()
