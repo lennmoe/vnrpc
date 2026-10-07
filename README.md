@@ -1,66 +1,79 @@
 # Visual Novel RPC
 
-Show the visual novel you're reading on your **Discord profile**: game name, current chapter or route, time read and cover.
+Show the visual novel you're reading on your **Discord profile**: the game, your current chapter or route, the time read and its cover.
 
-![Preview](image/preview.png)
+<p align="center"><img src="image/discord-status.png" width="420" alt="Discord status: Subarashiki Hibi, Reading — Wonderful Everyday, Total read: 35h 05m"></p>
 
-Windows tray app. It reads the title of the VN's window, so it works with most engines without any setup.
+<p align="center">
+  <a href="https://github.com/lennmoe/vnrpc/releases/latest"><b>Download</b></a> ·
+  <a href="https://vnrpc-docs.vercel.app/"><b>Documentation</b></a> ·
+  <a href="https://vnrpc-docs.vercel.app/troubleshooting/">Troubleshooting</a>
+</p>
+
+A small Windows tray app. It reads the title of the VN's window, so most engines work without any setup. One `.exe`, nothing else to install.
 
 ## Features
 
-- **Auto-detects the VN** you're playing (Ren'Py, KiriKiri, Siglus, Unity, …), or lets you pick the window by hand.
-- **Shows where you are**: prologue, chapter, route, ending… read straight from the window title (EN / FR / JP).
-- **Tracks time read** per VN, saved between sessions.
-- **Covers** from VNDB, an image URL or a local file, with a built-in crop tool.
-- **Steam names**: installed Steam games get their proper name automatically.
-- **Library** of every VN you've played, with time read and a Play button.
-- **Random pick from your VNDB wishlist** when you can't decide what to read next (needs your VNDB token).
-- **Share stats**: a "My week / my month in visual novels" card (covers, time read, VNs finished), copied as an image to paste on Discord.
-- **Japanese locale**: set a VN to start through Locale Emulator or NTLEA, and Play launches it that way.
-- **Screenshots**: press Print Screen while reading to capture the game's window. Each VN gets its own folder, and its page in the Library shows them; the gallery copies, opens or deletes them.
-- **Idle mode** (optional): when the VN stays in the background, your Discord status clears and the timers stop until you go back to it.
-- **Export / import your data** (settings, Library, time read, custom covers) as one file, e.g. to move to another PC.
-- **Desktop mascot** (optional, ukagaka style): a character on your desktop that comments on what you read. Use the built-in one or your own transparent PNG.
-- **Privacy per game**: Full, Partial (no chapter), Private (just "Visual Novel") or Off.
-- NSFW covers are blurred and never sent to Discord unless you allow it.
-- Optional **launch at Windows startup**.
+- **Finds the VN by itself** (Ren'Py, KiriKiri, SiglusEngine, Unity…), or you pick the window by hand.
+- **Shows where you are**: prologue, chapter, route or ending, read from the window title (English, French, Japanese).
+- **Tracks time read** for each VN, with a day-by-day history. You can also set it by hand.
+- **Covers** from VNDB, an image link or a file on your PC, with a crop tool.
+- **Privacy per game**: everything, no chapter, just "Visual Novel", or nothing. NSFW covers stay blurred and off Discord unless you allow them.
+- **Library** of every VN you've read, with a page for each one: status, rating, reading chart, screenshots and a Play button.
+- **Screenshots** of the game window with one key, sorted by VN, in a built-in gallery.
+- **Share card**: "My week / my month in visual novels", copied as an image to paste on Discord.
+- **VNDB list sync**, and a **random pick from your VNDB wishlist** when you can't decide what to read next.
+- **Japanese locale**: start a VN through Locale Emulator or NTLEA from its Play button.
+- **Themes**: Dark, Light, Sakura, Dracula, Nord, Catppuccin, Tokyo Night, Gruvbox, Rosé Pine, Solarized… or your own colors.
+- **Desktop mascot** (optional, ukagaka style) who comments on what you read.
+- **Idle mode**, **export / import** of your data, **launch at startup**, and **updates** in one click.
 
 ## Screenshots
 
-<p align="center"><img src="image/main.png" width="680" alt="Main window: the VN being read and a preview of the Discord status"></p>
+**Now reading** — the VN being read, and exactly what your friends see on Discord. [Docs](https://vnrpc-docs.vercel.app/now-reading/)
 
-**Library** — every VN you've read, and a page per VN with its status, VNDB rating, reading history and screenshots.
+<p align="center"><img src="image/now-reading.png" width="820" alt="Now reading: Senren * Banka, Chapter 4 — Yoshino Route, and the Discord preview"></p>
 
-<p align="center"><img src="image/library.png" width="680" alt="Library"></p>
-<p align="center"><img src="image/vn-page.png" width="820" alt="A VN's page in the Library"></p>
+**Library** — every VN you've read, and a page for each one with its reading history. [Docs](https://vnrpc-docs.vercel.app/library/)
 
-**Screenshots** — press Print Screen in game; browse, copy or delete them in the gallery.
+<p align="center"><img src="image/library.png" width="820" alt="Library"></p>
+<p align="center"><img src="image/vn-page.png" width="820" alt="A VN's page: time read, chart, status and screenshots"></p>
+
+**Screenshots** — one key in game; browse, copy or delete them in the gallery. [Docs](https://vnrpc-docs.vercel.app/screenshots/)
 
 <p align="center"><img src="image/gallery.png" width="820" alt="Screenshot gallery"></p>
 
-**Share your week** — a card to paste on Discord.
+**Share card** — your week or month in visual novels, ready to paste on Discord. [Docs](https://vnrpc-docs.vercel.app/share/)
 
-<p align="center"><img src="image/share-card.png" width="720" alt="My week in visual novels card"></p>
+<p align="center"><img src="image/share-card.png" width="720" alt="My September in visual novels"></p>
 
-**Themes** — pick one with a click: Dark, Light, Sakura, popular schemes (Dracula, Nord, Catppuccin, Tokyo Night, Gruvbox, Rosé Pine, Solarized…), or your own colors.
+**Random pick** — can't decide? Draw a VN from your VNDB wishlist. [Docs](https://vnrpc-docs.vercel.app/vndb/)
 
-<p align="center"><img src="image/themes.png" width="900" alt="The main window in the Dark, Sakura and Lilac themes"></p>
+<p align="center"><img src="image/wishlist.png" width="820" alt="Random pick from the VNDB wishlist: Fate/stay night"></p>
+
+**Themes** — pick one with a click, or make your own. [Docs](https://vnrpc-docs.vercel.app/themes/)
+
+<p align="center"><img src="image/themes.png" width="900" alt="The app in the Sakura, Dracula, Nord, Catppuccin Latte, Tokyo Night and Neon Mint themes"></p>
+
+**Desktop mascot** — a character who stands on your desktop and talks about what you read. Bring your own PNG if you like. [Docs](https://vnrpc-docs.vercel.app/mascot/)
+
+<p align="center"><img src="image/mascot.png" width="820" alt="The desktop mascot over a game, saying “Chapter 4 — Yoshino Route... here we go!”"></p>
 
 ## Install
 
-Download `VisualNovelRPC.exe` and run it. Nothing else is needed.
+1. Download [`VisualNovelRPC.exe`](https://github.com/lennmoe/vnrpc/releases/latest) and run it.
+2. Keep the Discord desktop app open, with **Settings → Activity Privacy → Share your detected activities** turned on.
 
-Discord desktop must be open, with **Settings → Activity Privacy → Share your detected activities** turned on.
+The app updates itself: it checks for a new release when it starts and shows what changed after an update. Full guide: [Install](https://vnrpc-docs.vercel.app/install/).
 
-The app checks for a new release each time it starts and offers to update itself (you can turn that off in **Settings → App**). After an update, a **What's new** page shows what changed (also in **Settings → App**).
+## Documentation
 
-## Use your own Discord app (optional)
+Everything is explained on **[vnrpc-docs.vercel.app](https://vnrpc-docs.vercel.app/)**:
 
-The app already works out of the box. If you want your own name and default image on Discord:
-
-1. Create an application at <https://discord.com/developers/applications>.
-2. Paste its **Application ID** in the app under **Settings → Discord Application ID**.
-3. In **Rich Presence → Art Assets**, upload an image named `vn_cover`. It's shown when a cover can't be displayed on Discord (local files and cropped images).
+- [Discord status & privacy](https://vnrpc-docs.vercel.app/discord-status/) and [chapters & routes](https://vnrpc-docs.vercel.app/chapters/)
+- [Covers](https://vnrpc-docs.vercel.app/covers/), [Library](https://vnrpc-docs.vercel.app/library/), [Screenshots](https://vnrpc-docs.vercel.app/screenshots/), [Share card](https://vnrpc-docs.vercel.app/share/)
+- [VNDB list & wishlist](https://vnrpc-docs.vercel.app/vndb/), [Japanese locale](https://vnrpc-docs.vercel.app/japanese-locale/), [Themes](https://vnrpc-docs.vercel.app/themes/), [Desktop mascot](https://vnrpc-docs.vercel.app/mascot/)
+- [All settings](https://vnrpc-docs.vercel.app/settings/), [Your data & backups](https://vnrpc-docs.vercel.app/data/), [Troubleshooting](https://vnrpc-docs.vercel.app/troubleshooting/)
 
 ## Run from source
 
@@ -71,32 +84,26 @@ pip install -r requirements.txt
 python -m vnrpc
 ```
 
-## Build the .exe
+Build the `.exe` (close the app first; the result is `dist\VisualNovelRPC.exe`):
 
 ```
 pip install -r requirements-dev.txt
 python build.py
 ```
 
-The result is `dist\VisualNovelRPC.exe`. Close the app before building.
-
-## Tests
+Tests:
 
 ```
 python -m pytest -q
 python tools/fake_vn_window.py --title "Grisaia no Kajitsu - Yumiko Route - Chapter 4"
 ```
 
-`fake_vn_window.py` opens a dummy window so you can test detection without a real VN.
+`fake_vn_window.py` opens a dummy window to test detection without a real VN. More in [Run from source](https://vnrpc-docs.vercel.app/from-source/).
 
-## Where settings are saved
+## Where your data is
 
-Everything is in `%APPDATA%\VisualNovelRPC\`:
+Everything is in `%APPDATA%\VisualNovelRPC\`: `config.yaml` (settings), `games\<title>.yaml` (one file per VN, safe to edit) and `cache\`. Screenshots go to `Pictures\Visual Novel RPC\<VN title>\` unless you pick another folder. See [Your data & backups](https://vnrpc-docs.vercel.app/data/).
 
-| File | What |
-|---|---|
-| `config.yaml` | app settings |
-| `games\<title>.yaml` | one file per VN (safe to edit or rename) |
-| `cache\` | VNDB results, covers and screenshot thumbnails |
+---
 
-Screenshots go to `Pictures\Visual Novel RPC\<VN title>\` (you can pick another folder in Settings).
+<sub>Covers and game screenshots in these images come from [VNDB](https://vndb.org) and belong to their publishers.</sub>
