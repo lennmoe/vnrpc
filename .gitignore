@@ -5,3 +5,4 @@ build/
 dist/
 *.spec.bak
 node_modules/
+media/
