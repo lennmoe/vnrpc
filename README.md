@@ -7,10 +7,11 @@ Show the visual novel you're reading on your **Discord profile**: the game, your
 <p align="center">
   <a href="https://github.com/lennmoe/vnrpc/releases/latest"><b>Download</b></a> ·
   <a href="https://vnrpc-docs.vercel.app/"><b>Documentation</b></a> ·
-  <a href="https://vnrpc-docs.vercel.app/troubleshooting/">Troubleshooting</a>
+  <a href="https://vnrpc-docs.vercel.app/troubleshooting/">Troubleshooting</a> ·
+  <a href="https://discord.gg/2SUrBSYzbK">Discord</a>
 </p>
 
-A small Windows tray app. It reads the title of the VN's window, so most engines work without any setup. One `.exe`, nothing else to install.
+A small Windows tray app, written in Rust with [Tauri](https://tauri.app). It reads the title of the VN's window, so most engines work without any setup. One light `.exe` (about 9 MB), nothing else to install.
 
 ## Features
 
@@ -32,7 +33,7 @@ A small Windows tray app. It reads the title of the VN's window, so most engines
 
 **Now reading** — the VN being read, and exactly what your friends see on Discord. [Docs](https://vnrpc-docs.vercel.app/now-reading/)
 
-<p align="center"><img src="image/now-reading.png" width="820" alt="Now reading: Senren * Banka, Chapter 4 — Yoshino Route, and the Discord preview"></p>
+<p align="center"><img src="image/now-reading.png" width="820" alt="Now reading: Senren * Banka, Yoshino Route, and the Discord preview"></p>
 
 **Library** — every VN you've read, and a page for each one with its reading history. [Docs](https://vnrpc-docs.vercel.app/library/)
 
@@ -49,7 +50,7 @@ A small Windows tray app. It reads the title of the VN's window, so most engines
 
 **Random pick** — can't decide? Draw a VN from your VNDB wishlist. [Docs](https://vnrpc-docs.vercel.app/vndb/)
 
-<p align="center"><img src="image/wishlist.png" width="820" alt="Random pick from the VNDB wishlist: Fate/stay night"></p>
+<p align="center"><img src="image/wishlist.png" width="820" alt="Random pick from the VNDB wishlist: CLANNAD"></p>
 
 **Themes** — pick one with a click, or make your own. [Docs](https://vnrpc-docs.vercel.app/themes/)
 
@@ -57,7 +58,7 @@ A small Windows tray app. It reads the title of the VN's window, so most engines
 
 **Desktop mascot** — a character who stands on your desktop and talks about what you read. Bring your own PNG if you like. [Docs](https://vnrpc-docs.vercel.app/mascot/)
 
-<p align="center"><img src="image/mascot.png" width="820" alt="The desktop mascot over a game, saying “Chapter 4 — Yoshino Route... here we go!”"></p>
+<p align="center"><img src="image/mascot.png" width="820" alt="The desktop mascot over a game, saying “Yoshino Route... here we go!”"></p>
 
 ## Install
 
@@ -65,6 +66,12 @@ A small Windows tray app. It reads the title of the VN's window, so most engines
 2. Keep the Discord desktop app open, with **Settings → Activity Privacy → Share your detected activities** turned on.
 
 The app updates itself: it checks for a new release when it starts and shows what changed after an update. Full guide: [Install](https://vnrpc-docs.vercel.app/install/).
+
+Coming from 1.x (the Python version)? The update to 2.0 is offered in the app as usual. Your settings, Library, play times and covers are picked up on the first launch.
+
+## Community
+
+Questions, bug reports, suggestions, and soon translations of the app into more languages: join the **[Discord server](https://discord.gg/2SUrBSYzbK)**. You can also [open an issue](https://github.com/lennmoe/vnrpc/issues).
 
 ## Documentation
 
@@ -77,32 +84,57 @@ Everything is explained on **[vnrpc-docs.vercel.app](https://vnrpc-docs.vercel.a
 
 ## Run from source
 
-Python 3.10+ on Windows.
+Needs [Rust](https://rustup.rs), the MSVC build tools and Node.js, on Windows 10 or 11 (WebView2 is already part of Windows).
 
 ```
-pip install -r requirements.txt
-python -m vnrpc
+npm install
+npm run dev
 ```
 
-Build the `.exe` (close the app first; the result is `dist\VisualNovelRPC.exe`):
+Build the `.exe` (close the app first; the result is `src-tauri\target\release\vnrpc.exe`, published as `VisualNovelRPC.exe`):
 
 ```
-pip install -r requirements-dev.txt
-python build.py
+npm run build
 ```
 
-Tests:
+Tests and formatting:
 
 ```
-python -m pytest -q
-python tools/fake_vn_window.py --title "Grisaia no Kajitsu - Yumiko Route - Chapter 4"
+cd src-tauri
+cargo test
+cargo fmt
+cd ..
+npx prettier --write "ui/**/*.{js,css,html}"
 ```
 
-`fake_vn_window.py` opens a dummy window to test detection without a real VN. More in [Run from source](https://vnrpc-docs.vercel.app/from-source/).
+### Where things are
+
+The engine is in Rust (`src-tauri/src`). The interface is plain HTML, CSS and JavaScript modules (`ui/`), with no build step.
+
+| `src-tauri/src` | |
+|---|---|
+| `engine.rs`, `state.rs` | the loop: detection, reading time, idle mode, Discord |
+| `engines.rs`, `title_parser.rs` | engine detection, title cleaning, chapter and route parsing |
+| `config.rs`, `vndb.rs`, `vndb_list.rs`, `steam.rs` | Library files, VNDB search, covers, list, rating and wishlist |
+| `discord.rs` | Rich Presence over Discord's IPC pipe |
+| `screenshots.rs`, `capture.rs`, `hotkey.rs`, `sound.rs` | capture key, window capture, shutter sound |
+| `mascot.rs`, `ui_windows.rs`, `tray.rs` | desktop mascot, speech balloon, toast, main window, tray |
+| `launcher.rs`, `backup.rs`, `updater.rs`, `autostart.rs` | Play (Locale Emulator, NTLEA), export and import, updates, startup |
+| `images.rs`, `clipboard.rs`, `shell.rs`, `winapi.rs` | crops, thumbnails, clipboard, Explorer, Win32 |
+| `commands/` | what the windows can call, by feature |
+
+| `ui/js` | |
+|---|---|
+| `pages/` | one file per page: home, cover, library, game, wishlist, screenshots, share, settings, what's new |
+| `components/` | chart, crop dialog, share card, theme tab, hotkey input, Play, release notes, update, Discord button |
+| `popups/` | the mascot, its speech balloon, the screenshot toast |
+| `app.js`, `router.js`, `store.js`, `ui.js` | startup, navigation, shared state, small widgets |
 
 ## Where your data is
 
-Everything is in `%APPDATA%\VisualNovelRPC\`: `config.yaml` (settings), `games\<title>.yaml` (one file per VN, safe to edit) and `cache\`. Screenshots go to `Pictures\Visual Novel RPC\<VN title>\` unless you pick another folder. See [Your data & backups](https://vnrpc-docs.vercel.app/data/).
+Everything is in `%APPDATA%\moe.lenn.vnrpc-tauri\`: `config.yaml` (settings), `games\<title>.yaml` (one file per VN, safe to edit) and `cache\`. Screenshots go to `Pictures\Visual Novel RPC\<VN title>\` unless you pick another folder. See [Your data & backups](https://vnrpc-docs.vercel.app/data/).
+
+The 1.x versions kept their data in `%APPDATA%\VisualNovelRPC\`. Version 2.0 copies it on its first launch and leaves the original folder untouched.
 
 ---
 
