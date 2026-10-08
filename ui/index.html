@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en" data-mode="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Visual Novel RPC</title>
+
+    <link rel="stylesheet" href="css/base.css" />
+    <link rel="stylesheet" href="css/components.css" />
+    <link rel="stylesheet" href="css/layout.css" />
+    <link rel="stylesheet" href="css/pages.css" />
+
+    <script type="module" src="js/app.js"></script>
+  </head>
+
+  <body class="main-window">
+    <aside class="sidebar">
+      <div class="brand">
+        <img src="assets/app_icon.png" alt="" />
+        <div>
+          <b>Visual Novel</b>
+          <span>RPC</span>
+        </div>
+      </div>
+
+      <nav>
+        <button data-page="home">Now reading</button>
+        <button data-page="library">Library</button>
+        <button data-page="screenshots">Screenshots</button>
+        <button data-page="share">Share</button>
+        <button data-page="settings">Settings</button>
+      </nav>
+
+      <div class="side-bottom">
+        <div class="pill" id="pill-game"><i></i><span>Game</span></div>
+        <div class="pill" id="pill-discord"><i></i><span>Discord</span></div>
+        <button class="btn secondary" id="pause-btn">Pause</button>
+      </div>
+    </aside>
+
+    <main id="content"></main>
+
+    <div class="toast" id="toast"></div>
+  </body>
+</html>
