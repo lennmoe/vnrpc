@@ -1,8 +1,7 @@
-__pycache__/
-*.pyc
-.pytest_cache/
+node_modules/
+src-tauri/target/
+src-tauri/gen/
+media/
 build/
 dist/
-*.spec.bak
-node_modules/
-media/
+dist-nuitka/
