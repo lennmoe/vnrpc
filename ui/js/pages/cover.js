@@ -1,5 +1,4 @@
 import { $, el, html } from "../dom.js";
-import { pickFile } from "../tauri.js";
 import { register, show } from "../router.js";
 import { store } from "../store.js";
 import { ask, call, openDialog, segmented, setCover, toast } from "../ui.js";
@@ -18,10 +17,6 @@ const RELEASE_TYPES = {
   pkgmed: "Medium",
   dig: "Digital",
 };
-
-const IMAGE_FILTERS = [
-  { name: "Images", extensions: ["png", "jpg", "jpeg", "webp", "gif", "bmp"] },
-];
 
 const TEMPLATE = `
   <button class="back" data-id="back">← Back</button>
@@ -44,7 +39,6 @@ const TEMPLATE = `
     <div class="tabs" data-id="tabs">
       <button data-tab="vndb">Search VNDB</button>
       <button data-tab="url">Image link</button>
-      <button data-tab="file">File on this PC</button>
     </div>
 
     <div data-tab-body="vndb">
@@ -68,23 +62,6 @@ const TEMPLATE = `
           <button class="btn" data-id="url-use">Use this image</button>
         </div>
         <div class="hint-text" data-id="url-status"></div>
-      </div>
-    </div>
-
-    <div data-tab-body="file" hidden>
-      <p class="muted small-text" style="margin-top: 14px">
-        It's shown in this app, but Discord can't display a file from your PC: your status
-        uses the fallback image from Settings instead.
-      </p>
-      <div class="row">
-        <input type="text" class="wide" data-id="file" placeholder="No file selected" readonly />
-        <button class="btn secondary" data-id="file-browse">Browse…</button>
-      </div>
-      <div class="preview-area">
-        <div class="cover preview" data-id="file-preview"></div>
-        <div class="row">
-          <button class="btn" data-id="file-use">Use this file</button>
-        </div>
       </div>
     </div>
   </div>
@@ -114,8 +91,6 @@ function build(container) {
   part("url-use").onclick = useUrl;
   part("url").onkeydown = (event) => event.key === "Enter" && previewUrl();
 
-  part("file-browse").onclick = browseFile;
-  part("file-use").onclick = useFile;
 }
 
 async function showPage({ key: wanted, back = "home" }) {
@@ -130,9 +105,7 @@ async function showPage({ key: wanted, back = "home" }) {
 
   part("query").value = game.name;
   part("url").value = "";
-  part("file").value = "";
   setCover(part("url-preview"));
-  setCover(part("file-preview"));
   part("url-status").textContent = "";
   search();
 }
@@ -338,26 +311,6 @@ async function useUrl() {
     return;
   }
   await call("set_cover_url", { key, url });
-  done("Cover changed");
-}
-
-async function browseFile() {
-  const path = await pickFile({ title: "Choose a cover image", filters: IMAGE_FILTERS });
-  if (!path) {
-    return;
-  }
-  part("file").value = path;
-  const image = await call("prepare_image", { source: path });
-  setCover(part("file-preview"), { path: image.path });
-}
-
-async function useFile() {
-  const path = part("file").value;
-  if (!path) {
-    toast("Choose an image first.", { error: true });
-    return;
-  }
-  await call("set_cover_file", { key, path });
   done("Cover changed");
 }
 

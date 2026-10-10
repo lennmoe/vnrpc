@@ -7,16 +7,8 @@ use image::codecs::jpeg::JpegEncoder;
 use image::imageops::FilterType;
 use image::{DynamicImage, RgbImage};
 
-const IMAGE_EXTS: [&str; 6] = ["png", "jpg", "jpeg", "webp", "gif", "bmp"];
-
 fn short_hash(data: &[u8], len: usize) -> String {
     sha1_smol::Sha1::from(data).digest().to_string()[..len].to_string()
-}
-
-fn extension(path: &Path) -> String {
-    path.extension()
-        .map(|e| e.to_string_lossy().to_lowercase())
-        .unwrap_or_default()
 }
 
 fn open(path: &Path) -> Result<DynamicImage, String> {
@@ -25,27 +17,6 @@ fn open(path: &Path) -> Result<DynamicImage, String> {
 
 pub fn cover_fit(img: &DynamicImage, w: u32, h: u32, filter: FilterType) -> RgbImage {
     img.resize_to_fill(w, h, filter).to_rgb8()
-}
-
-pub fn store_local_cover(covers_dir: &Path, source: &Path) -> Result<PathBuf, String> {
-    let ext = extension(source);
-    if !source.is_file() || !IMAGE_EXTS.contains(&ext.as_str()) {
-        return Err("that file isn't an image".into());
-    }
-    open(source)?;
-
-    let resolved = fs::canonicalize(source).unwrap_or_else(|_| source.to_path_buf());
-    let name = format!(
-        "{}.{ext}",
-        short_hash(resolved.to_string_lossy().as_bytes(), 16)
-    );
-    let dest = covers_dir.join("local").join(name);
-
-    fs::create_dir_all(dest.parent().unwrap()).map_err(|e| e.to_string())?;
-    if !dest.exists() {
-        fs::copy(source, &dest).map_err(|e| e.to_string())?;
-    }
-    Ok(dest)
 }
 
 pub fn store_download(downloads_dir: &Path, url: &str, bytes: &[u8]) -> Result<PathBuf, String> {

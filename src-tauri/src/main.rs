@@ -156,7 +156,6 @@ fn main() {
             commands::covers::set_game_vn,
             commands::covers::set_release_cover,
             commands::covers::set_cover_url,
-            commands::covers::set_cover_file,
             commands::covers::prepare_image,
             commands::screenshots::list_screenshots,
             commands::screenshots::screenshot_info,

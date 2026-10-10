@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use serde::Serialize;
@@ -74,19 +74,6 @@ pub fn set_cover_url(shared: SharedState, key: String, url: String) -> Result<()
         &shared,
         &key,
         fields(&[("cover_source", "url"), ("cover_value", &url)]),
-    );
-    Ok(())
-}
-
-#[tauri::command(async)]
-pub fn set_cover_file(shared: SharedState, key: String, path: String) -> Result<(), String> {
-    let covers_dir = shared.config.lock().unwrap().covers_dir();
-    let stored = images::store_local_cover(&covers_dir, Path::new(&path))?;
-    let stored = stored.to_string_lossy().to_string();
-    apply(
-        &shared,
-        &key,
-        fields(&[("cover_source", "local"), ("cover_value", &stored)]),
     );
     Ok(())
 }

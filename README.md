@@ -18,7 +18,7 @@ A small Windows tray app, written in Rust with [Tauri](https://tauri.app). It re
 - **Finds the VN by itself** (Ren'Py, KiriKiri, SiglusEngine, Unity…), or you pick the window by hand.
 - **Shows where you are**: prologue, chapter, route or ending, read from the window title (English, French, Japanese).
 - **Tracks time read** for each VN, with a day-by-day history. You can also set it by hand.
-- **Covers** from VNDB, an image link or a file on your PC.
+- **Covers** from VNDB or an image link.
 - **Privacy per game**: everything, no chapter, just "Visual Novel", or nothing. NSFW covers stay blurred and off Discord unless you allow them.
 - **Library** of every VN you've read, with a page for each one: status, rating, reading chart, screenshots and a Play button.
 - **Screenshots** of the game window with one key, sorted by VN, in a built-in gallery.
