@@ -197,7 +197,7 @@ function renderVndb(entry) {
         class: "btn secondary small",
         onclick: () => call("open_url", { url: `https://vndb.org/${id}` }),
       },
-      `VNDB ${id} ↗`,
+      `VNDB ${id}`,
     );
 
   if (vnId) {
