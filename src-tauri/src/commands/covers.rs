@@ -5,6 +5,7 @@ use serde::Serialize;
 use serde_json::{json, Map, Value};
 
 use super::{blocking, SharedState};
+use crate::config::url_cache_key;
 use crate::images;
 use crate::state::{Cmd, Shared};
 use crate::vndb::{ReleaseCover, VnResult};
@@ -37,45 +38,77 @@ pub async fn release_covers(
     blocking(move || shared.vndb.release_covers(&vn_id)).await
 }
 
-#[tauri::command(async)]
-pub fn set_game_vn(shared: SharedState, key: String, vn_id: String, title: String) {
-    let pairs = [
-        ("vndb_id", vn_id.as_str()),
-        ("title", &title),
-        ("cover_source", "vndb"),
-        ("cover_value", &vn_id),
-    ];
-    apply(&shared, &key, fields(&pairs));
+fn download_vn_cover(shared: &Shared, vn_id: &str) {
+    if let Ok(Some(vn)) = shared.vndb.get(vn_id) {
+        shared.vndb.cover_path(&vn.id, &vn.image_url);
+    }
 }
 
-#[tauri::command(async)]
-pub fn set_release_cover(
-    shared: SharedState,
+#[tauri::command]
+pub async fn set_game_vn(
+    shared: SharedState<'_>,
+    key: String,
+    vn_id: String,
+    title: String,
+) -> Result<(), String> {
+    let shared = Arc::clone(&shared);
+    blocking(move || {
+        download_vn_cover(&shared, &vn_id);
+        let pairs = [
+            ("vndb_id", vn_id.as_str()),
+            ("title", &title),
+            ("cover_source", "vndb"),
+            ("cover_value", &vn_id),
+        ];
+        apply(&shared, &key, fields(&pairs));
+        Ok(())
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn set_release_cover(
+    shared: SharedState<'_>,
     key: String,
     vn_id: String,
     title: String,
     url: String,
-) {
-    let pairs = [
-        ("vndb_id", vn_id.as_str()),
-        ("title", &title),
-        ("cover_source", "url"),
-        ("cover_value", &url),
-    ];
-    apply(&shared, &key, fields(&pairs));
+) -> Result<(), String> {
+    let shared = Arc::clone(&shared);
+    blocking(move || {
+        shared.vndb.cover_path(&url_cache_key(&url), &url);
+        let pairs = [
+            ("vndb_id", vn_id.as_str()),
+            ("title", &title),
+            ("cover_source", "url"),
+            ("cover_value", &url),
+        ];
+        apply(&shared, &key, fields(&pairs));
+        Ok(())
+    })
+    .await
 }
 
-#[tauri::command(async)]
-pub fn set_cover_url(shared: SharedState, key: String, url: String) -> Result<(), String> {
+#[tauri::command]
+pub async fn set_cover_url(
+    shared: SharedState<'_>,
+    key: String,
+    url: String,
+) -> Result<(), String> {
     if !(url.starts_with("http://") || url.starts_with("https://")) {
         return Err("Enter a http(s) image link.".into());
     }
-    apply(
-        &shared,
-        &key,
-        fields(&[("cover_source", "url"), ("cover_value", &url)]),
-    );
-    Ok(())
+    let shared = Arc::clone(&shared);
+    blocking(move || {
+        shared.vndb.cover_path(&url_cache_key(&url), &url);
+        apply(
+            &shared,
+            &key,
+            fields(&[("cover_source", "url"), ("cover_value", &url)]),
+        );
+        Ok(())
+    })
+    .await
 }
 
 #[derive(Serialize)]
