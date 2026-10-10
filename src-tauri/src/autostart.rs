@@ -11,6 +11,12 @@ pub fn is_enabled() -> bool {
         .is_ok()
 }
 
+pub fn refresh() {
+    if is_enabled() {
+        let _ = set_enabled(true);
+    }
+}
+
 pub fn set_enabled(enabled: bool) -> Result<(), String> {
     let key = RegKey::predef(HKEY_CURRENT_USER)
         .open_subkey_with_flags(RUN_KEY, KEY_SET_VALUE)

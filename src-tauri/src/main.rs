@@ -89,6 +89,9 @@ fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
         .name("hotkey".into())
         .spawn(move || hotkey::run(for_hotkey))?;
 
+    if !cfg!(debug_assertions) {
+        autostart::refresh();
+    }
     tray::build(app.handle())?;
     mascot::apply_settings(app.handle());
 
