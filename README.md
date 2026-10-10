@@ -31,32 +31,32 @@ A small Windows tray app, written in Rust with [Tauri](https://tauri.app). It re
 
 ## Screenshots
 
-**Now reading** — the VN being read, and exactly what your friends see on Discord. [Docs](https://vnrpc-docs.vercel.app/now-reading/)
+**Now reading** ・ the VN being read, and exactly what your friends see on Discord. [Docs](https://vnrpc-docs.vercel.app/now-reading/)
 
 <p align="center"><img src="image/now-reading.png" width="820" alt="Now reading: Senren * Banka, Yoshino Route, and the Discord preview"></p>
 
-**Library** — every VN you've read, and a page for each one with its reading history. [Docs](https://vnrpc-docs.vercel.app/library/)
+**Library** ・ every VN you've read, and a page for each one with its reading history. [Docs](https://vnrpc-docs.vercel.app/library/)
 
 <p align="center"><img src="image/library.png" width="820" alt="Library"></p>
 <p align="center"><img src="image/vn-page.png" width="820" alt="A VN's page: time read, chart, status and screenshots"></p>
 
-**Screenshots** — one key in game; browse, copy or delete them in the gallery. [Docs](https://vnrpc-docs.vercel.app/screenshots/)
+**Screenshots** ・ one key in game; browse, copy or delete them in the gallery. [Docs](https://vnrpc-docs.vercel.app/screenshots/)
 
 <p align="center"><img src="image/gallery.png" width="820" alt="Screenshot gallery"></p>
 
-**Share card** — your week or month in visual novels, ready to paste on Discord. [Docs](https://vnrpc-docs.vercel.app/share/)
+**Share card** ・ your week or month in visual novels, ready to paste on Discord. [Docs](https://vnrpc-docs.vercel.app/share/)
 
 <p align="center"><img src="image/share-card.png" width="720" alt="My September in visual novels"></p>
 
-**Random pick** — can't decide? Draw a VN from your VNDB wishlist. [Docs](https://vnrpc-docs.vercel.app/vndb/)
+**Random pick** ・ can't decide? Draw a VN from your VNDB wishlist. [Docs](https://vnrpc-docs.vercel.app/vndb/)
 
 <p align="center"><img src="image/wishlist.png" width="820" alt="Random pick from the VNDB wishlist: CLANNAD"></p>
 
-**Themes** — pick one with a click, or make your own. [Docs](https://vnrpc-docs.vercel.app/themes/)
+**Themes** ・ pick one with a click, or make your own. [Docs](https://vnrpc-docs.vercel.app/themes/)
 
 <p align="center"><img src="image/themes.png" width="900" alt="The app in the Sakura, Dracula, Nord, Catppuccin Latte, Tokyo Night and Neon Mint themes"></p>
 
-**Desktop mascot** — a character who stands on your desktop and talks about what you read. Bring your own PNG if you like. [Docs](https://vnrpc-docs.vercel.app/mascot/)
+**Desktop mascot** ・ a character who stands on your desktop and talks about what you read. Bring your own PNG if you like. [Docs](https://vnrpc-docs.vercel.app/mascot/)
 
 <p align="center"><img src="image/mascot.png" width="820" alt="The desktop mascot over a game, saying “Yoshino Route... here we go!”"></p>
 
