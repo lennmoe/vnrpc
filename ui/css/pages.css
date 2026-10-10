@@ -404,35 +404,6 @@
   height: 146px;
 }
 
-.crop-stage {
-  position: relative;
-  margin: 0 auto;
-  cursor: crosshair;
-  background: #0b0c0e;
-  touch-action: none;
-}
-
-.crop-stage img {
-  width: 100%;
-  height: 100%;
-  filter: brightness(0.35);
-  pointer-events: none;
-}
-
-.crop-selection {
-  position: absolute;
-  border: 2px solid var(--accent);
-  overflow: hidden;
-  cursor: move;
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5);
-}
-
-.crop-selection img {
-  position: absolute;
-  filter: none;
-  max-width: none;
-}
-
 .gallery {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 230px;

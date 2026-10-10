@@ -48,29 +48,6 @@ pub fn store_local_cover(covers_dir: &Path, source: &Path) -> Result<PathBuf, St
     Ok(dest)
 }
 
-pub fn crop_cover(
-    covers_dir: &Path,
-    source: &Path,
-    x: u32,
-    y: u32,
-    w: u32,
-    h: u32,
-) -> Result<PathBuf, String> {
-    let img = open(source)?;
-    let w = w.min(img.width().saturating_sub(x)).max(1);
-    let h = h.min(img.height().saturating_sub(y)).max(1);
-    let cropped = img.crop_imm(x, y, w, h).to_rgb8();
-
-    let name = format!("crop_{}.png", short_hash(cropped.as_raw(), 16));
-    let dest = covers_dir.join("local").join(name);
-
-    fs::create_dir_all(dest.parent().unwrap()).map_err(|e| e.to_string())?;
-    if !dest.exists() {
-        cropped.save(&dest).map_err(|e| e.to_string())?;
-    }
-    Ok(dest)
-}
-
 pub fn store_download(downloads_dir: &Path, url: &str, bytes: &[u8]) -> Result<PathBuf, String> {
     let format = image::guess_format(bytes).map_err(|_| "that link isn't an image".to_string())?;
     let ext = format.extensions_str().first().copied().unwrap_or("img");

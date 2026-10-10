@@ -127,28 +127,3 @@ pub async fn prepare_image(
     })
     .await
 }
-
-#[tauri::command]
-pub async fn crop_cover(
-    shared: SharedState<'_>,
-    key: String,
-    source: String,
-    x: u32,
-    y: u32,
-    width: u32,
-    height: u32,
-) -> Result<(), String> {
-    let shared = Arc::clone(&shared);
-    blocking(move || {
-        let covers_dir = shared.config.lock().unwrap().covers_dir();
-        let stored = images::crop_cover(&covers_dir, Path::new(&source), x, y, width, height)?;
-        let stored = stored.to_string_lossy().to_string();
-        apply(
-            &shared,
-            &key,
-            fields(&[("cover_source", "local"), ("cover_value", &stored)]),
-        );
-        Ok(())
-    })
-    .await
-}

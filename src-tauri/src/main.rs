@@ -158,7 +158,6 @@ fn main() {
             commands::covers::set_cover_url,
             commands::covers::set_cover_file,
             commands::covers::prepare_image,
-            commands::covers::crop_cover,
             commands::screenshots::list_screenshots,
             commands::screenshots::screenshot_info,
             commands::screenshots::thumbnail,

@@ -18,7 +18,7 @@ A small Windows tray app, written in Rust with [Tauri](https://tauri.app). It re
 - **Finds the VN by itself** (Ren'Py, KiriKiri, SiglusEngine, Unity…), or you pick the window by hand.
 - **Shows where you are**: prologue, chapter, route or ending, read from the window title (English, French, Japanese).
 - **Tracks time read** for each VN, with a day-by-day history. You can also set it by hand.
-- **Covers** from VNDB, an image link or a file on your PC, with a crop tool.
+- **Covers** from VNDB, an image link or a file on your PC.
 - **Privacy per game**: everything, no chapter, just "Visual Novel", or nothing. NSFW covers stay blurred and off Discord unless you allow them.
 - **Library** of every VN you've read, with a page for each one: status, rating, reading chart, screenshots and a Play button.
 - **Screenshots** of the game window with one key, sorted by VN, in a built-in gallery.
@@ -120,13 +120,13 @@ The engine is in Rust (`src-tauri/src`). The interface is plain HTML, CSS and Ja
 | `screenshots.rs`, `capture.rs`, `hotkey.rs`, `sound.rs` | capture key, window capture, shutter sound |
 | `mascot.rs`, `ui_windows.rs`, `tray.rs` | desktop mascot, speech balloon, toast, main window, tray |
 | `launcher.rs`, `backup.rs`, `updater.rs`, `autostart.rs` | Play (Locale Emulator, NTLEA), export and import, updates, startup |
-| `images.rs`, `clipboard.rs`, `shell.rs`, `winapi.rs` | crops, thumbnails, clipboard, Explorer, Win32 |
+| `images.rs`, `clipboard.rs`, `shell.rs`, `winapi.rs` | thumbnails, clipboard, Explorer, Win32 |
 | `commands/` | what the windows can call, by feature |
 
 | `ui/js` | |
 |---|---|
 | `pages/` | one file per page: home, cover, library, game, wishlist, screenshots, share, settings, what's new |
-| `components/` | chart, crop dialog, share card, theme tab, hotkey input, Play, release notes, update, Discord button |
+| `components/` | chart, share card, theme tab, hotkey input, Play, release notes, update, Discord button |
 | `popups/` | the mascot, its speech balloon, the screenshot toast |
 | `app.js`, `router.js`, `store.js`, `ui.js` | startup, navigation, shared state, small widgets |
 

@@ -3,7 +3,6 @@ import { pickFile } from "../tauri.js";
 import { register, show } from "../router.js";
 import { store } from "../store.js";
 import { ask, call, openDialog, segmented, setCover, toast } from "../ui.js";
-import { cropImage } from "../components/crop.js";
 
 const PRIVACY_HELP = {
   full: "Discord shows the name, the current section and the cover.",
@@ -66,7 +65,6 @@ const TEMPLATE = `
         <div class="cover preview" data-id="url-preview"></div>
         <div class="row">
           <button class="btn secondary" data-id="url-show">Preview</button>
-          <button class="btn secondary" data-id="url-crop">Crop…</button>
           <button class="btn" data-id="url-use">Use this image</button>
         </div>
         <div class="hint-text" data-id="url-status"></div>
@@ -85,7 +83,6 @@ const TEMPLATE = `
       <div class="preview-area">
         <div class="cover preview" data-id="file-preview"></div>
         <div class="row">
-          <button class="btn secondary" data-id="file-crop">Crop…</button>
           <button class="btn" data-id="file-use">Use this file</button>
         </div>
       </div>
@@ -96,7 +93,6 @@ const TEMPLATE = `
 let root;
 let key = "";
 let backTo = "home";
-let prepared = { url: null, file: null };
 
 const part = (id) => $(`[data-id="${id}"]`, root);
 
@@ -115,19 +111,16 @@ function build(container) {
   };
 
   part("url-show").onclick = previewUrl;
-  part("url-crop").onclick = () => cropFrom("url");
   part("url-use").onclick = useUrl;
   part("url").onkeydown = (event) => event.key === "Enter" && previewUrl();
 
   part("file-browse").onclick = browseFile;
-  part("file-crop").onclick = () => cropFrom("file");
   part("file-use").onclick = useFile;
 }
 
 async function showPage({ key: wanted, back = "home" }) {
   key = wanted;
   backTo = back;
-  prepared = { url: null, file: null };
 
   const game = await call("get_game", { key });
   part("title").textContent = `Cover & privacy — ${game.name}`;
@@ -237,7 +230,6 @@ function resultRow(vn) {
   const buttons = el(
     "div",
     { class: "row" },
-    el("button", { class: "btn secondary small", onclick: () => cropVn(vn) }, "Crop…"),
     el(
       "button",
       { class: "btn secondary small", onclick: () => releaseCovers(vn) },
@@ -255,14 +247,6 @@ async function useVn(vn) {
   }
   await call("set_game_vn", { key, vnId: vn.id, title: vn.title });
   done(`Now using ${vn.title}`);
-}
-
-async function cropVn(vn) {
-  if (!vn.image_url) {
-    toast("This VN has no cover image to crop.", { error: true });
-    return;
-  }
-  await cropAndUse(vn.image_url);
 }
 
 async function releaseCovers(vn) {
@@ -312,10 +296,6 @@ async function releaseCovers(vn) {
         await call("set_release_cover", { key, vnId: vn.id, title: vn.title, url: cover.url });
         done("Cover changed");
       };
-      const crop = async () => {
-        closeDialog(null);
-        await cropAndUse(cover.url);
-      };
 
       return el(
         "div",
@@ -323,27 +303,11 @@ async function releaseCovers(vn) {
         picture,
         el("b", { class: cover.nsfw ? "chip warn" : "" }, caption),
         el("div", { class: "muted small-text" }, cover.release_title),
-        el(
-          "div",
-          { class: "row" },
-          el("button", { class: "btn small", onclick: use }, "Use"),
-          el("button", { class: "btn secondary small", onclick: crop }, "Crop…"),
-        ),
+        el("div", { class: "row" }, el("button", { class: "btn small", onclick: use }, "Use")),
       );
     }),
   );
   await dialog;
-}
-
-async function cropAndUse(source) {
-  toast("Fetching the image…");
-  const image = await call("prepare_image", { source });
-  const area = await cropImage(image);
-  if (!area) {
-    return;
-  }
-  await call("crop_cover", { key, source: image.path, ...area });
-  done("Cover cropped and saved");
 }
 
 function linkIsValid(url) {
@@ -359,8 +323,8 @@ async function previewUrl() {
 
   part("url-status").textContent = "Loading preview…";
   try {
-    prepared.url = await call("prepare_image", { source: url });
-    setCover(part("url-preview"), { path: prepared.url.path });
+    const image = await call("prepare_image", { source: url });
+    setCover(part("url-preview"), { path: image.path });
     part("url-status").textContent = "";
   } catch {
     part("url-status").textContent = "Couldn't load an image from that link.";
@@ -383,8 +347,8 @@ async function browseFile() {
     return;
   }
   part("file").value = path;
-  prepared.file = await call("prepare_image", { source: path });
-  setCover(part("file-preview"), { path: prepared.file.path });
+  const image = await call("prepare_image", { source: path });
+  setCover(part("file-preview"), { path: image.path });
 }
 
 async function useFile() {
@@ -395,28 +359,6 @@ async function useFile() {
   }
   await call("set_cover_file", { key, path });
   done("Cover changed");
-}
-
-async function cropFrom(which) {
-  if (which === "url") {
-    if (!prepared.url) {
-      await previewUrl();
-    }
-  } else if (!prepared.file) {
-    toast("Choose an image first.", { error: true });
-    return;
-  }
-
-  const image = prepared[which];
-  if (!image) {
-    return;
-  }
-  const area = await cropImage(image);
-  if (!area) {
-    return;
-  }
-  await call("crop_cover", { key, source: image.path, ...area });
-  done("Cover cropped and saved");
 }
 
 register({
