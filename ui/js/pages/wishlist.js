@@ -19,7 +19,7 @@ const TEMPLATE = `
 
       <div class="row actions">
         <button class="btn" data-id="next">Another one</button>
-        <button class="btn secondary" data-id="vndb">VNDB page ↗</button>
+        <button class="btn secondary" data-id="vndb">VNDB page</button>
         <span class="subtle small-text">Space: another one</span>
       </div>
     </div>

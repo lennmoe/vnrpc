@@ -33,7 +33,7 @@ const TEMPLATE = `
 
         <div class="row">
           <button class="btn secondary" data-id="change-cover">Change VN / cover…</button>
-          <button class="btn secondary" data-id="vndb" hidden>VNDB page ↗</button>
+          <button class="btn secondary" data-id="vndb" hidden>VNDB page</button>
           <button class="btn secondary" data-id="open-game">Library page</button>
         </div>
       </div>
