@@ -580,3 +580,14 @@ button.chip:hover,
 .chip.editable {
   cursor: pointer;
 }
+
+.btn.help {
+  width: 36px;
+  padding: 8px 0;
+  border-radius: 50%;
+  color: var(--muted);
+}
+
+.btn.help:hover:not(:disabled) {
+  color: var(--text);
+}

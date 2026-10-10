@@ -24,7 +24,14 @@
   flex-direction: column;
   gap: 10px;
   padding-top: 6px;
+  padding-right: 44px;
   min-width: 0;
+}
+
+.now-main .help {
+  position: absolute;
+  top: 0;
+  right: 0;
 }
 
 .now-info h1 {

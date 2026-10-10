@@ -18,6 +18,7 @@ const TEMPLATE = `
 
     <div class="now-main">
       <div class="cover big" data-id="cover"></div>
+      <button class="btn secondary help" data-id="wrong-vn" title="Wrong VN or cover?">?</button>
 
       <div class="now-info">
         <div class="eyebrow">Now reading</div>
@@ -31,7 +32,7 @@ const TEMPLATE = `
         </div>
 
         <div class="row">
-          <button class="btn secondary" data-id="change-cover">Change cover…</button>
+          <button class="btn secondary" data-id="change-cover">Change VN / cover…</button>
           <button class="btn secondary" data-id="vndb" hidden>VNDB page ↗</button>
           <button class="btn secondary" data-id="open-game">Library page</button>
         </div>
@@ -87,6 +88,7 @@ function build(container) {
   root.append(html(TEMPLATE));
 
   part("change-cover").onclick = () => show("cover", { key: store.snapshot.key });
+  part("wrong-vn").onclick = explainWrongVn;
   part("open-game").onclick = () => show("game", { key: store.snapshot.key });
   part("set-section").onclick = editSection;
   part("section").onclick = () => store.snapshot.section_type === "manual" && editSection();
@@ -183,6 +185,36 @@ async function editSection() {
   }
   const section = answer === "clear" ? "" : input.value.trim();
   await call("update_game", { key: snap.key, fields: { section } });
+}
+
+async function explainWrongVn() {
+  const paragraph = (text) => el("p", { class: "muted" }, text);
+
+  const answer = await openDialog({
+    title: "Wrong VN or cover?",
+    body: el(
+      "div",
+      { style: { display: "grid", gap: "12px" } },
+      paragraph(
+        "The VN is guessed from the window title and the .exe name. Some games share one " +
+          "launcher or a series name (Bishoujo Mangekyou has many entries, for example), " +
+          "so the first match on VNDB isn't always the one you're reading.",
+      ),
+      paragraph(
+        "Click “Change VN / cover…”, search VNDB and pick the right entry: the name, " +
+          "cover and VNDB link all switch to it. Your choice is remembered for this game.",
+      ),
+      paragraph("Only the picture is wrong? Use the Image link or File tabs on the same page."),
+    ),
+    actions: [
+      { label: "Close", kind: "secondary", value: null },
+      { label: "Pick the right VN…", value: "pick" },
+    ],
+  });
+
+  if (answer === "pick") {
+    show("cover", { key: store.snapshot.key });
+  }
 }
 
 function renderProcess(snap) {
