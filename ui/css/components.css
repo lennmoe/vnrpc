@@ -563,3 +563,20 @@ dialog[open] {
   font-size: 12px;
   margin: 2px 0 6px;
 }
+
+button.chip {
+  border: 0;
+  font: inherit;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+button.chip:hover,
+.chip.editable:hover {
+  filter: brightness(1.15);
+}
+
+.chip.editable {
+  cursor: pointer;
+}

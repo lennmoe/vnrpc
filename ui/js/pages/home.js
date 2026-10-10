@@ -3,7 +3,7 @@ import { formatPlaytime } from "../format.js";
 import { fileUrl } from "../tauri.js";
 import { register, show } from "../router.js";
 import { store, subscribe } from "../store.js";
-import { call, confirmButton, segmented, setCover, toast } from "../ui.js";
+import { call, confirmButton, openDialog, segmented, setCover, toast } from "../ui.js";
 
 const TEMPLATE = `
   <div class="banner warn" data-id="paused" hidden>
@@ -26,6 +26,7 @@ const TEMPLATE = `
 
         <div class="chips">
           <span class="chip accent" data-id="section" hidden></span>
+          <button class="chip quiet" data-id="set-section" hidden>+ Route / chapter</button>
           <span class="chip" data-id="time"></span>
         </div>
 
@@ -87,6 +88,8 @@ function build(container) {
 
   part("change-cover").onclick = () => show("cover", { key: store.snapshot.key });
   part("open-game").onclick = () => show("game", { key: store.snapshot.key });
+  part("set-section").onclick = editSection;
+  part("section").onclick = () => store.snapshot.section_type === "manual" && editSection();
   part("refresh").onclick = fillWindows;
   part("window").onchange = (event) => {
     const changes = { manual_target: { exe: event.target.value, title_contains: "" } };
@@ -117,8 +120,12 @@ function renderSnapshot(snap) {
 
   part("title").textContent = snap.game_name || snap.raw_title;
   part("sub").textContent = [snap.engine_name, snap.exe].filter(Boolean).join("  ·  ");
+  const manual = snap.section_type === "manual";
   part("section").hidden = !snap.section_label;
   part("section").textContent = snap.section_label;
+  part("section").classList.toggle("editable", manual);
+  part("section").title = manual ? "Set by you — click to change" : "Read from the window title";
+  part("set-section").hidden = !!snap.section_label;
   part("time").textContent = `${formatPlaytime(snap.playtime_seconds)} read`;
 
   const cover = snap.cover || {};
@@ -133,6 +140,49 @@ function renderSnapshot(snap) {
   part("vndb").onclick = () => call("open_url", { url: `https://vndb.org/${vn.id}` });
 
   renderActivity(snap);
+}
+
+async function editSection() {
+  const snap = store.snapshot;
+  const current = snap.section_type === "manual" ? snap.section_label : "";
+  const input = el("input", {
+    type: "text",
+    class: "wide",
+    value: current,
+    placeholder: "Yoshino Route, Chapter 3…",
+    maxlength: 100,
+  });
+
+  const answer = await openDialog({
+    title: "Route / chapter",
+    body: el(
+      "div",
+      { style: { display: "grid", gap: "12px" } },
+      el(
+        "p",
+        { class: "muted" },
+        "The window title doesn't say where you are. Type it here and it's shown on Discord. " +
+          "Anything read from the title later takes over.",
+      ),
+      input,
+    ),
+    actions: [
+      current && { label: "Clear", kind: "secondary", value: "clear" },
+      { label: "Cancel", kind: "secondary", value: null },
+      { label: "Save", value: "save" },
+    ].filter(Boolean),
+    onOpen: (finish) => {
+      input.focus();
+      input.select();
+      input.onkeydown = (event) => event.key === "Enter" && finish("save");
+    },
+  });
+
+  if (!answer) {
+    return;
+  }
+  const section = answer === "clear" ? "" : input.value.trim();
+  await call("update_game", { key: snap.key, fields: { section } });
 }
 
 function renderProcess(snap) {

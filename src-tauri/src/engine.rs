@@ -460,7 +460,12 @@ impl Engine {
             vndb_list::sync_status(&self.shared, &key, &vn_id, &status, true);
         }
 
-        let info = parse(&cleaned, &game_name, &rules);
+        let mut info = parse(&cleaned, &game_name, &rules);
+        let manual_section = text(&entry, "section");
+        if info.section_label.is_empty() && !manual_section.trim().is_empty() {
+            info.section_type = "manual".into();
+            info.section_label = manual_section.trim().to_string();
+        }
         let privacy = Some(text(&entry, "privacy").to_lowercase())
             .filter(|p| !p.is_empty())
             .unwrap_or("full".into());

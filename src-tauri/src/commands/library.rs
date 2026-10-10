@@ -116,7 +116,7 @@ pub fn update_game(
     key: String,
     fields: Map<String, Value>,
 ) -> Result<(), String> {
-    const EDITABLE: [&str; 4] = ["status", "privacy", "title", "launcher"];
+    const EDITABLE: [&str; 5] = ["status", "privacy", "title", "launcher", "section"];
 
     for (field, value) in &fields {
         if !EDITABLE.contains(&field.as_str()) {
